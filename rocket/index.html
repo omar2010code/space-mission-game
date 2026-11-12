@@ -1,0 +1,546 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hazlaoum — rocket workshop</title>
+<style>
+  html, body { margin:0; height:100%; background:#000; overflow:hidden; }
+  body { display:flex; align-items:center; justify-content:center; }
+  #stage { position:relative; width:min(100vw, calc(100vh * 16 / 9)); aspect-ratio:16 / 9; background:#07070d;
+    overflow:hidden; container-type:inline-size; user-select:none; color:#c9c7e4; font:1.15cqw/1.4 ui-monospace, Consolas, monospace; }
+  canvas { position:absolute; inset:0; width:100%; height:100%; }
+  .screen { position:absolute; inset:0; display:none; }
+  .screen.on { display:block; }
+  .serif { font-family:Georgia, "Times New Roman", serif; }
+  .center { display:none; flex-direction:column; align-items:center; justify-content:center; text-align:center; }
+  .center.on { display:flex; }
+  .title { font:6.2cqw Georgia, serif; color:#f3efe6; }
+  .tagline { font:2.4cqw Georgia, serif; letter-spacing:.35cqw; color:#b9b6d6; }
+  .orn { width:40cqw; height:1px; background:#8a88a8; margin:2.2cqw 0 3.4cqw; position:relative; }
+  .orn i { position:absolute; left:50%; top:50%; width:1.2cqw; height:1.2cqw; transform:translate(-50%,-50%) rotate(45deg);
+    border:1px solid #d8d6ee; background:#07070d; outline:.8cqw solid #07070d; }
+  .item { font:2.8cqw Georgia, serif; color:#a9a6c8; margin:.5cqw 0; padding:.2cqw 3.5cqw; cursor:pointer; position:relative; }
+  .item:hover { color:#fff; text-shadow:0 0 1.2cqw #ffffff66; }
+  .item:hover::before, .item:hover::after { content:"◆"; position:absolute; top:50%; transform:translateY(-50%); font-size:1.1cqw; color:#d8d6ee; }
+  .item:hover::before { left:1cqw; } .item:hover::after { right:1cqw; }
+  .foot { position:absolute; bottom:3.5%; left:0; right:0; text-align:center; color:#5f6386; font-size:1.2cqw; }
+  h2 { font:3.2cqw Georgia, serif; color:#f3efe6; margin:0; font-weight:normal; }
+  .panel { position:absolute; top:0; bottom:0; background:#0b0c16ee; border:0 solid #262a44; padding:1.2cqw; box-sizing:border-box; overflow-y:auto; }
+  .panel::-webkit-scrollbar { width:.5cqw; } .panel::-webkit-scrollbar-thumb { background:#2c3152; }
+  #palette { left:0; width:25%; border-right-width:1px; }
+  #side { right:0; width:27%; border-left-width:1px; }
+  .part { display:flex; gap:.8cqw; align-items:center; padding:.55cqw; margin-bottom:.45cqw; border:1px solid #262a44; border-radius:.4cqw;
+    background:#12142299; cursor:pointer; }
+  .part:hover { border-color:#7fd4ff; background:#1a2238; }
+  .hl { border-color:#ffcf5a !important; animation:pulse 1s ease-in-out infinite alternate; }
+  @keyframes pulse { from { box-shadow:0 0 .2cqw #ffcf5a55; } to { box-shadow:0 0 1.2cqw #ffcf5acc; } }
+  .part .ico { flex:0 0 4.2cqw; height:3.6cqw; background:center / contain no-repeat; image-rendering:pixelated; }
+  .part b { color:#f3efe6; font-weight:normal; font-size:1.2cqw; }
+  .part small, .dim { color:#8f93b8; font-size:.95cqw; display:block; }
+  .tag { color:#ffb347; font-size:.85cqw; margin-left:.4cqw; }
+  .head { font:1.7cqw Georgia, serif; color:#f3efe6; margin:0 0 .6cqw; }
+  .bar { height:.7cqw; background:#1c1f34; border-radius:.4cqw; overflow:hidden; margin:.15cqw 0 .6cqw; }
+  .bar i { display:block; height:100%; background:#7fd4ff; }
+  .bar.bad i { background:#ff5f6b; } .bar.ok i { background:#6fe39a; }
+  .row { display:flex; justify-content:space-between; } .row b { color:#f3efe6; font-weight:normal; }
+  .bad { color:#ff7b85; } .ok { color:#6fe39a; }
+  .btn { display:inline-block; padding:.5cqw 1.1cqw; border:1px solid #4a5080; border-radius:.4cqw; color:#f3efe6; cursor:pointer; background:#171a2e; margin:.3cqw .3cqw 0 0; }
+  .btn:hover { border-color:#7fd4ff; } .btn.go { background:#1d4a63; border-color:#7fd4ff; font-size:1.4cqw; }
+  .btn.off { opacity:.4; pointer-events:none; }
+  #tip { position:absolute; left:26.5%; right:28.5%; bottom:2%; display:flex; gap:.8cqw; align-items:center; background:#0b0c16dd; border:1px solid #262a44;
+    border-radius:.5cqw; padding:.6cqw .9cqw; color:#f3efe6; }
+  #tip img { width:2.6cqw; image-rendering:pixelated; }
+  #selbar { position:absolute; left:26.5%; top:2%; display:none; background:#0b0c16dd; border:1px solid #262a44; border-radius:.5cqw; padding:.4cqw .7cqw; }
+  .cards { display:grid; grid-template-columns:repeat(4, 1fr); gap:1.2cqw; width:92%; margin-top:2.4cqw; }
+  .card { border:1px solid #262a44; border-radius:.6cqw; background:#111322; padding:1.2cqw; text-align:left; cursor:pointer; }
+  .card:hover { border-color:#7fd4ff; background:#16213a; }
+  .card h3 { font:1.9cqw Georgia, serif; color:#f3efe6; margin:0 0 .3cqw; font-weight:normal; }
+  .card .lvl { color:#ffb347; font-size:.95cqw; }
+  .card ul { margin:.6cqw 0 0; padding-left:1.2cqw; color:#a9a6c8; font-size:1cqw; }
+  #flightLog { position:absolute; left:2%; top:4%; width:30%; }
+  #flightLog div { margin-bottom:.35cqw; text-shadow:0 0 .4cqw #000, 0 0 .4cqw #000; }
+  #caption { position:absolute; left:0; right:0; bottom:9%; text-align:center; font:2.6cqw Georgia, serif; color:#f3efe6; text-shadow:0 0 .8cqw #000, 0 0 .8cqw #000; }
+  #skip { position:absolute; right:2%; bottom:3%; }
+  #report { background:#07070df2; overflow-y:auto; }
+  #report .box { width:70%; margin:3% auto; }
+  .step { display:flex; gap:.8cqw; padding:.5cqw .2cqw; border-bottom:1px solid #1c1f34; }
+  .step .mark { flex:0 0 1.6cqw; font-size:1.4cqw; }
+  .step b { color:#f3efe6; font-weight:normal; font-size:1.25cqw; }
+  .stars { font-size:3cqw; color:#ffcf5a; letter-spacing:.4cqw; }
+  .how { width:62%; text-align:left; font-size:1.25cqw; color:#c9c7e4; }
+  .how li { margin-bottom:.5cqw; }
+</style>
+</head>
+<body>
+<div id="stage">
+  <canvas id="cv" width="1280" height="720"></canvas>
+
+  <div class="screen center on" id="menu">
+    <div class="title">HAZLAOUM</div>
+    <div class="tagline">rocket workshop</div>
+    <div class="orn"><i></i></div>
+    <div class="item" data-go="missions">Start building</div>
+    <div class="item" id="tutStart">Tutorial</div>
+    <div class="item" data-go="how">How to play</div>
+    <div class="item" id="homeLink">Main menu</div>
+    <div class="foot">NASA Space Apps 2026 · Space mission design game</div>
+  </div>
+
+  <div class="screen center" id="how">
+    <h2>How to play</h2>
+    <div class="orn" style="margin:1.6cqw 0 2cqw"><i></i></div>
+    <ol class="how">
+      <li>Pick a mission. Each one has a budget and its own needs.</li>
+      <li>Click parts on the left to add them. Your spacecraft is built from the top down: the first part is the nose.</li>
+      <li>Click a part on the rocket to select it, then move it up or down or remove it.</li>
+      <li>Put a <b style="color:#ffb347">decoupler</b> between sections. Everything below a decoupler is one stage and is dropped when its fuel is used, so the rest flies lighter.</li>
+      <li>Watch the gauges: cost, mass, electricity, lift-off thrust and Δv (how much speed change your fuel can give).</li>
+      <li>Press Launch. The mission report tells you which step worked or failed, and why.</li>
+    </ol>
+    <div class="item" data-go="menu">Back</div>
+  </div>
+
+  <div class="screen center" id="missions">
+    <h2>Choose a mission</h2>
+    <div class="cards" id="cards"></div>
+    <div class="item" data-go="menu" style="margin-top:2cqw">Back</div>
+  </div>
+
+  <div class="screen" id="build">
+    <div class="panel" id="palette"><div class="head">Parts</div><div id="partList"></div></div>
+    <div id="selbar"></div>
+    <div id="tip"><img src="assets/haz_idle.png" alt=""><span id="tipText" style="flex:1"></span><span class="btn" id="tutSkip" style="display:none;margin:0;white-space:nowrap">Skip tutorial</span></div>
+    <div class="panel" id="side"></div>
+  </div>
+
+  <div class="screen" id="flight">
+    <div id="flightLog"></div>
+    <div id="caption"></div>
+    <div class="btn" id="skip">Skip to report ›</div>
+  </div>
+
+  <div class="screen" id="report"><div class="box" id="reportBox"></div></div>
+</div>
+
+<script>
+const W = 1280, H = 720, G0 = 9.81, VE = 3335;         // VE: engine exhaust speed in m/s (how efficient the engine is)
+const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
+const $ = id => document.getElementById(id);
+const img = n => Object.assign(new Image(), { src: `assets/${n}.png` });
+
+// ---------- the 11 kinds of part ----------
+// mass in tonnes, cost in $M, use/gen in kW of electricity, fuel in tonnes, thrust in kN.
+// w,h: drawn size. sh: how much height it adds to the stack (legs and solar wings stick out sideways).
+const PARTS = {
+  capsule:   { name: 'Command capsule', tag: 'mandatory', does: 'Controls the spacecraft, carries the crew, talks to the control station on Earth.', mass: 3, cost: 30, use: 1.5, gen: 1, w: 70, h: 60 },
+  tank:      { name: 'Fuel tank', tag: 'mandatory', does: 'Holds the fuel that pushes the spacecraft.', mass: 2.5, fuel: 40, cost: 8, w: 64, h: 100 },
+  engine:    { name: 'Engine', tag: 'mandatory', does: 'Burns the fuel. Put it at the bottom of a stage.', mass: 2, thrust: 1000, cost: 12, w: 93, h: 90, body: 0.6 },
+  decoupler: { name: 'Decoupler', tag: 'mandatory', does: 'Separates stages: drops empty tanks and engines once they are useless.', mass: 0.3, cost: 2, w: 66, h: 8 },
+  parachute: { name: 'Parachute', tag: 'to return', does: 'Pointed nose cone with the parachute inside: cuts through the air going up, slows the descent coming back.', mass: 0.3, cost: 3, w: 28, h: 64 },
+  legs:      { name: 'Landing legs', tag: 'to land', does: 'Let the spacecraft stand on the Moon, Mars and other worlds.', mass: 0.8, cost: 5, w: 164, h: 64, sh: 40 },
+  rcs:       { name: 'RCS thrusters', does: 'Small thrusters that control where the spacecraft is pointing.', mass: 0.4, cost: 4, use: 0.2, w: 86, h: 11 },
+  shield:    { name: 'Heat shield', does: 'Protects parts that re-enter an atmosphere.', mass: 1, cost: 6, w: 70, h: 14 },
+  service:   { name: 'Service module', does: 'Extra power, air, water and heat control for missions that are not short.', mass: 3, cost: 25, gen: 2, w: 64, h: 90 },
+  life:      { name: 'Life-support system', does: 'Keeps air, water and temperature right for the crew.', mass: 1, cost: 10, use: 1.5, w: 66, h: 30 },
+  solar:     { name: 'Solar arrays', does: 'Extra electricity from sunlight. Weak far from the Sun.', mass: 0.5, cost: 7, sun: 3, w: 250, h: 28 },
+};
+for (const k in PARTS) PARTS[k].img = img(k);
+const art = { hangar: img('bg_hangar'), pad: img('bg_pad') };
+
+// ---------- missions ----------
+// Each step needs either a total Δv so far (dv), certain parts (need), a systems check (sys) or a safe return (reentry).
+// The Δv numbers are simplified for the game; real missions need more.
+const MISSIONS = [
+  { key: 'leo', name: 'Orbit and home', level: 'Beginner', budget: 120, sun: 1, body: 'earth',
+    brief: ['Reach Earth orbit', 'Come back and land by parachute', 'Short trip: 1 day'],
+    steps: [{ n: 'Climb to Earth orbit', dv: 6650, scene: 'ascent' }, { n: 'Systems check in orbit', sys: 1, scene: 'orbit' },
+            { n: 'Fire engines to leave orbit', dv: 6850, scene: 'orbit' }, { n: 'Re-entry and splashdown', reentry: 1, scene: 'reentry' }] },
+  { key: 'moon', name: 'Moon landing', level: 'Intermediate', budget: 250, sun: 1, long: 1, rcs: 1, body: 'moon',
+    brief: ['Land on the Moon and come home', 'Needs landing legs and precise steering', 'Long trip: 8 days'],
+    steps: [{ n: 'Climb to Earth orbit', dv: 6650, scene: 'ascent' }, { n: 'Systems check in orbit', sys: 1, scene: 'orbit' },
+            { n: 'Fly to the Moon', dv: 7650, scene: 'cruise' }, { n: 'Land on the Moon', dv: 8250, need: ['legs'], scene: 'land' },
+            { n: 'Lift off and fly home', dv: 8850, scene: 'home' }, { n: 'Re-entry and splashdown', reentry: 1, scene: 'reentry' }] },
+  { key: 'mars', name: 'Mars outpost', level: 'Advanced', budget: 250, sun: 0.43, long: 1, rcs: 1, body: 'mars',
+    brief: ['One-way trip: land the crew on Mars', 'Sunlight is only 43% as strong', 'Very long trip: 7 months'],
+    steps: [{ n: 'Climb to Earth orbit', dv: 6650, scene: 'ascent' }, { n: 'Systems check in orbit', sys: 1, scene: 'orbit' },
+            { n: 'Fly to Mars', dv: 8150, scene: 'cruise' }, { n: 'Enter the Mars atmosphere', need: ['shield', 'parachute'], scene: 'cruise' },
+            { n: 'Land on Mars', dv: 8550, need: ['legs'], scene: 'land' }] },
+  { key: 'saturn', name: 'Saturn fly-by', level: 'Expert', budget: 290, sun: 0.01, long: 1, rcs: 1, body: 'saturn',
+    brief: ['Swing past Saturn and return', 'Sunlight is only 1% as strong: solar arrays barely work', 'Extreme trip: years'],
+    steps: [{ n: 'Climb to Earth orbit', dv: 6650, scene: 'ascent' }, { n: 'Systems check in orbit', sys: 1, scene: 'orbit' },
+            { n: 'Fly to Saturn', dv: 9250, scene: 'cruise' }, { n: 'Swing past Saturn', need: ['rcs'], scene: 'flyby' },
+            { n: 'Re-entry and splashdown', reentry: 1, scene: 'reentry' }] },
+];
+
+// ---------- game state ----------
+let screen = 'menu', mission = MISSIONS[0], stack = [], selected = -1, result = null;
+const designs = {};                                   // one saved design per mission
+const fmt = (n, d = 1) => (+n.toFixed(d)).toLocaleString('en-US');
+
+// ---------- the engineering model ----------
+// Stages: a decoupler starts a new stage that includes everything below it. The lowest stage burns first and is dropped.
+function analyse(s, m) {
+  const count = {}; let mass = 0, cost = 0, use = 0, gen = 0;
+  for (const k of s) { const p = PARTS[k]; count[k] = (count[k] || 0) + 1; mass += p.mass + (p.fuel || 0); cost += p.cost; use += p.use || 0; gen += (p.gen || 0) + (p.sun || 0) * m.sun; }
+  const segs = [[]];
+  s.forEach((k, i) => { if (k === 'decoupler') segs.push([]); segs[segs.length - 1].push(i); });
+  const stages = []; let above = 0, blocked = false;
+  const wet = seg => seg.reduce((t, i) => t + PARTS[s[i]].mass + (PARTS[s[i]].fuel || 0), 0);
+  const tops = segs.map(wet);
+  for (let j = 0; j < segs.length; j++) {
+    let fuel = 0, engines = 0;
+    segs[j].forEach((i, n) => {
+      if (s[i] === 'tank') fuel += PARTS.tank.fuel;
+      if (s[i] === 'engine') {                         // an engine only works if nothing but engines or legs is below it in its stage
+        if (segs[j].slice(n + 1).every(q => s[q] === 'engine' || s[q] === 'legs')) engines++; else blocked = true;
+      }
+    });
+    above += tops[j];
+    stages.push({ seg: segs[j], fuel, engines, m0: above });
+  }
+  let dv = 0;
+  for (let j = stages.length - 1; j >= 0; j--) {        // burn from the bottom up
+    const st = stages[j];
+    st.dv = st.engines && st.fuel ? VE * Math.log(st.m0 / (st.m0 - st.fuel)) : 0;
+    st.twr = st.engines * PARTS.engine.thrust / (st.m0 * G0);
+    dv += st.dv; st.cum = dv;
+  }
+  const first = stages[stages.length - 1];
+  // Air drag on the way up costs extra Δv: a blunt nose, and anything that sticks out sideways into the airflow.
+  const dragWhy = [];
+  if (s.length && s[0] !== 'parachute' && s[0] !== 'capsule') dragWhy.push(['blunt nose (start with the nose cone or the capsule)', 300]);
+  if (count.solar) dragWhy.push([`${count.solar} solar array set(s) sticking out`, 100 * count.solar]);
+  if (count.legs) dragWhy.push([`${count.legs} landing leg set(s) sticking out`, 100 * count.legs]);
+  const drag = dragWhy.reduce((t, d) => t + d[1], 0);
+  return { count, mass, cost, use, gen, stages, dv, blocked, drag, dragWhy, twr: first ? first.twr : 0, thrust: first ? first.engines * 1000 : 0,
+           top: new Set((segs[0] || []).map(i => s[i])) };
+}
+
+// Runs the mission step by step. Each result says whether the step worked and why.
+function simulate(s, m) {
+  const a = analyse(s, m), out = [], has = k => a.count[k] > 0;
+  const push = (n, why, scene) => { out.push({ n, ok: !why, why: why || 'OK', scene }); return !why; };
+  const pre = !has('capsule') ? 'There is no command capsule, so nobody can control the spacecraft.'
+    : !has('tank') ? 'There is no fuel tank, so there is nothing to burn.'
+    : !has('engine') ? 'There is no engine to burn the fuel.'
+    : !has('decoupler') ? 'There is no decoupler. Without staging the rocket must carry its empty tanks all the way.'
+    : a.blocked ? 'An engine has other parts under it in the same stage, so it cannot fire. Put engines at the bottom of their stage.'
+    : a.cost > m.budget ? `The design costs $${fmt(a.cost)}M but the budget is $${m.budget}M.` : null;
+  let alive = push('Pre-launch check', pre, 'pad');
+  if (alive) alive = push('Lift-off', a.twr < 1 ? `The engines push with ${fmt(a.thrust, 0)} kN but the rocket weighs ${fmt(a.mass * G0, 0)} kN. Thrust must be bigger than weight: add engines to the first stage or remove mass.` : null, 'liftoff');
+  for (const st of m.steps) {
+    if (!alive) { out.push({ n: st.n, skipped: true, scene: st.scene }); continue; }
+    let why = null;
+    if (st.dv && a.dv < st.dv + a.drag) why = `Out of fuel. This step needs ${fmt(st.dv + a.drag, 0)} m/s of Δv in total${a.drag ? ` (including ${a.drag} m/s lost to air drag: ${a.dragWhy.map(d => d[0]).join(', ')})` : ''}, but the rocket only has ${fmt(a.dv, 0)} m/s. Add fuel, add decouplers so empty tanks are dropped, or make the shape more streamlined.`;
+    if (!why && st.need) for (const k of st.need) if (!has(k)) { why = `Missing ${PARTS[k].name.toLowerCase()}: ${PARTS[k].does.toLowerCase()}`; break; }
+    if (!why && st.sys) why = !has('life') ? 'There is no life-support system, so the crew has no air to breathe.'
+      : m.long && !has('service') ? 'This is a long trip. Without a service module the crew runs out of air, water and power.'
+      : a.gen < a.use ? `Not enough electricity: the systems use ${fmt(a.use)} kW but only ${fmt(a.gen)} kW is made${m.sun < 1 ? ` (sunlight here is ${m.sun * 100}% of Earth's, so solar arrays are weak)` : ''}. Add a power source.`
+      : m.rcs && !has('rcs') ? 'There are no RCS thrusters, so the spacecraft cannot point itself for the manoeuvres ahead.' : null;
+    if (!why && st.reentry) why = !has('shield') ? 'There is no heat shield. The capsule burns up as it hits the air.'
+      : !has('parachute') ? 'There is no parachute. The capsule hits the sea far too fast.'
+      : !(a.top.has('shield') && a.top.has('parachute')) ? 'The heat shield and parachute were on a stage that was dropped. Keep them in the top stage with the capsule.' : null;
+    alive = push(st.n, why, st.scene);
+  }
+  const success = alive, pct = a.cost / m.budget;
+  return { a, steps: out, success, stars: !success ? 0 : pct <= 0.85 ? 3 : pct <= 0.92 ? 2 : 1 };
+}
+
+// What Hazlaoum says in the workshop: the first thing that would go wrong.
+function tip() {
+  if (!stack.length) return 'Start at the top: add a command capsule, then build downwards.';
+  const r = simulate(stack, mission), bad = r.steps.find(s => s.ok === false);
+  return bad ? `${bad.n}: ${bad.why}` : `Ready! This design should fly. ${'★'.repeat(r.stars)} if it works.`;
+}
+
+// ---------- tutorial ----------
+// A guided first build on the beginner mission: one part at a time, with the reason for each.
+const TUT = [
+  ['parachute', 'Welcome! We will build a rocket that reaches orbit and comes home. A rocket is built from the nose down. Click the glowing Parachute: it goes on top and slows the capsule on the way back.'],
+  ['capsule', 'Now the Command capsule. The crew sits here and controls the spacecraft.'],
+  ['shield', 'Add a Heat shield under the capsule. Coming home, the air gets so hot that the capsule would burn without it.'],
+  ['life', 'The crew needs air and water. Add the Life-support system.'],
+  ['solar', 'Look at "Electricity" on the right: the systems use more than the battery makes. Add Solar arrays to fix it.'],
+  ['decoupler', 'Everything so far is the part that comes home. Add a Decoupler: it lets us drop what is below once it is empty.'],
+  ['tank', 'Now the push. Add a Fuel tank.'],
+  ['engine', 'Fuel does nothing alone. Add an Engine under the tank to burn it. Watch Δv on the right jump up: that is how far the fuel can take you.'],
+  ['decoupler', 'Δv is still short of the target. Start a second stage: add another Decoupler.'],
+  ['tank', 'Add a Fuel tank for the first stage.'],
+  ['engine', 'And an Engine at the very bottom. This stage fires first, then drops away so the rest flies lighter.'],
+];
+let tut = null;                                        // index of the current tutorial step, or null when not in the tutorial
+function startTutorial() { mission = MISSIONS[0]; stack = designs.leo = []; selected = -1; tut = 0; go('build'); }
+
+// ---------- drawing the rocket ----------
+// Lays the stack out from the top. Engines next to each other in the list sit side by side as a cluster.
+function layout(s) {
+  const items = []; let y = 0;
+  for (let i = 0; i < s.length; i++) {
+    const p = PARTS[s[i]];
+    if (s[i] === 'engine') {
+      let n = 1; while (s[i + n] === 'engine') n++;
+      const w = n === 1 ? p.w : Math.min(p.w, 190 / (p.body * n)), h = p.h * (w / p.w), gap = w * p.body;   // fins overlap, bodies touch
+      for (let j = 0; j < n; j++) items.push({ i: i + j, k: 'engine', x: (j - (n - 1) / 2) * gap, y, w, h });
+      y += h; i += n - 1;
+    } else { items.push({ i, k: s[i], x: 0, y, w: p.w, h: p.h }); y += p.sh || p.h; }
+  }
+  return { items, height: y };
+}
+function drawStack(s, cx, bottom, scale, opts = {}) {
+  const L = layout(s), top = bottom - L.height * scale, rects = [];
+  ctx.imageSmoothingEnabled = true;
+  for (const it of L.items) {
+    const w = it.w * scale, h = it.h * scale, x = cx + it.x * scale - w / 2, y = top + it.y * scale;
+    if (opts.flame && it.k === 'engine' && opts.flame.has(it.i)) {
+      const f = (26 + Math.random() * 16) * scale;
+      ctx.fillStyle = '#ff9a2e'; ctx.beginPath(); ctx.moveTo(x + w * 0.3, y + h - 2); ctx.lineTo(x + w * 0.7, y + h - 2); ctx.lineTo(x + w / 2, y + h + f * 2.2); ctx.fill();
+      ctx.fillStyle = '#fff3b0'; ctx.beginPath(); ctx.moveTo(x + w * 0.4, y + h - 2); ctx.lineTo(x + w * 0.6, y + h - 2); ctx.lineTo(x + w / 2, y + h + f); ctx.fill();
+    }
+    if (PARTS[it.k].img.width) ctx.drawImage(PARTS[it.k].img, x, y, w, h);
+    if (it.i === opts.selected) { ctx.strokeStyle = '#7fd4ff'; ctx.lineWidth = 2; ctx.strokeRect(x - 3, y - 3, w + 6, h + 6); }
+    rects.push({ i: it.i, x, y, w, h });
+  }
+  return { rects, top, height: L.height * scale };
+}
+
+// ---------- workshop screen ----------
+let hitRects = [];
+function drawBuild() {
+  ctx.drawImage(art.hangar, 0, 0, W, H);
+  const L = layout(stack), scale = Math.min(1.5, 520 / Math.max(1, L.height));
+  const a = analyse(stack, mission);
+  hitRects = drawStack(stack, 640, 606, scale, { selected }).rects;
+  ctx.textAlign = 'right'; ctx.font = '13px ui-monospace, Consolas, monospace';      // stage brackets beside the rocket
+  const d = drawStackInfo(scale);
+  a.stages.forEach((st, j) => {
+    if (!st.seg.length) return;
+    const ys = st.seg.map(i => d[i]).filter(Boolean); if (!ys.length) return;
+    const y0 = Math.min(...ys.map(r => r.y)), y1 = Math.max(...ys.map(r => r.y + r.h));
+    const my = (y0 + y1) / 2;                                                        // dark tag so the label reads on the bright hall
+    ctx.fillStyle = '#0b0c16d9'; ctx.fillRect(346, my - 18, 96, 38);
+    ctx.strokeStyle = '#0b0c16'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(456, y0 + 2); ctx.lineTo(448, y0 + 2); ctx.lineTo(448, y1 - 2); ctx.lineTo(456, y1 - 2); ctx.stroke();
+    ctx.fillStyle = '#f3efe6'; ctx.fillText(`stage ${a.stages.length - j}`, 436, my - 2);
+    ctx.fillStyle = st.dv ? '#7fd4ff' : '#a9a6c8'; ctx.fillText(st.dv ? `${fmt(st.dv, 0)} m/s` : 'no thrust', 436, my + 13);
+  });
+}
+function drawStackInfo(scale) { const m = {}; for (const r of hitRects) m[r.i] = r; return m; }
+
+function refresh() {
+  const a = analyse(stack, mission), m = mission, need = Math.max(...m.steps.map(s => s.dv || 0)) + a.drag;
+  const bar = (v, max, good) => `<div class="bar ${good ? 'ok' : 'bad'}"><i style="width:${Math.min(100, v / max * 100)}%"></i></div>`;
+  $('side').innerHTML = `
+    <div class="head">${m.name}</div>
+    <span class="dim">${m.brief.join(' · ')}</span><br>
+    <div class="row"><span>Cost</span><b class="${a.cost > m.budget ? 'bad' : ''}">$${fmt(a.cost)}M / $${m.budget}M</b></div>${bar(a.cost, m.budget, a.cost <= m.budget)}
+    <div class="row"><span>Δv (fuel reach)</span><b class="${a.dv < need ? 'bad' : 'ok'}">${fmt(a.dv, 0)} / ${fmt(need, 0)} m/s</b></div>${bar(a.dv, need, a.dv >= need)}
+    <div class="row"><span>Air drag (shape)</span><b class="${a.drag ? 'bad' : 'ok'}">${a.drag ? `+${a.drag} m/s needed` : 'streamlined'}</b></div>
+    <span class="dim" style="margin-bottom:.5cqw">${a.drag ? a.dragWhy.map(d => `${d[0]}: +${d[1]}`).join(' · ') : 'Pointed nose, nothing sticking out.'}</span>
+    <div class="row"><span>Lift-off thrust ÷ weight</span><b class="${a.twr < 1 ? 'bad' : 'ok'}">${fmt(a.twr, 2)}</b></div>${bar(a.twr, 2, a.twr >= 1)}
+    <div class="row"><span>Electricity made / used</span><b class="${a.gen < a.use ? 'bad' : 'ok'}">${fmt(a.gen)} / ${fmt(a.use)} kW</b></div>${bar(a.gen, Math.max(a.use, 0.1) * 1.5, a.gen >= a.use)}
+    <div class="row"><span>Mass on the pad</span><b>${fmt(a.mass)} t</b></div>
+    <div class="row"><span>Parts · stages</span><b>${stack.length} · ${a.stages.filter(s => s.seg.length).length}</b></div>
+    <br><div class="head" style="font-size:1.3cqw">Mission steps</div>
+    ${m.steps.map(s => `<span class="dim">• ${s.n}${s.dv ? ` — ${fmt(s.dv + a.drag, 0)} m/s` : ''}</span>`).join('')}
+    <br><div class="btn go ${stack.length ? '' : 'off'}" id="launch">Launch ▲</div>
+    <div class="btn" id="clear">Clear</div><div class="btn" id="back">Missions</div>`;
+  $('launch').onclick = launch; $('back').onclick = () => go('missions');
+  $('clear').onclick = () => { stack.length = 0; selected = -1; if (tut !== null) tut = 0; refresh(); };
+  $('tipText').textContent = tut === null ? tip()
+    : tut < TUT.length ? `Step ${tut + 1} of ${TUT.length + 1}: ${TUT[tut][1]}`
+    : `Step ${TUT.length + 1} of ${TUT.length + 1}: All the bars on the right are green, so this rocket should work. Press the glowing Launch button!`;
+  $('tutSkip').style.display = tut === null ? 'none' : '';
+  document.querySelectorAll('.part').forEach(el => {
+    const on = tut !== null && tut < TUT.length && el.dataset.k === TUT[tut][0];
+    el.classList.toggle('hl', on); if (on) el.scrollIntoView({ block: 'nearest' });
+  });
+  $('launch').classList.toggle('hl', tut !== null && tut >= TUT.length);
+  const sb = $('selbar');
+  if (selected >= 0 && stack[selected]) {
+    sb.style.display = 'block';
+    sb.innerHTML = `<b style="color:#f3efe6;font-weight:normal">${PARTS[stack[selected]].name}</b> <span class="btn" data-m="-1">▲ up</span><span class="btn" data-m="1">▼ down</span><span class="btn" data-m="0">✕ remove</span>`;
+    sb.querySelectorAll('.btn').forEach(b => b.onclick = () => edit(+b.dataset.m));
+  } else sb.style.display = 'none';
+}
+function edit(dir) {                                   // move the selected part up/down, or remove it (dir 0)
+  if (selected < 0) return;
+  if (dir === 0) { stack.splice(selected, 1); selected = Math.min(selected, stack.length - 1); }
+  else { const j = selected + dir; if (j < 0 || j >= stack.length) return; [stack[selected], stack[j]] = [stack[j], stack[selected]]; selected = j; }
+  refresh();
+}
+function addPart(k) {                                  // new parts go under the selected part, or at the bottom
+  if (stack.length >= 40) return;
+  if (tut !== null) {                                  // in the tutorial only the glowing part can be added
+    if (tut >= TUT.length || k !== TUT[tut][0]) return;
+    tut++; selected = -1;
+  }
+  if (selected >= 0) { stack.splice(selected + 1, 0, k); selected++; } else stack.push(k);
+  refresh();
+}
+$('partList').innerHTML = Object.entries(PARTS).map(([k, p]) => `<div class="part" data-k="${k}"><div class="ico" style="background-image:url(assets/${k}.png)"></div>
+  <div><b>${p.name}</b>${p.tag ? `<span class="tag">${p.tag}</span>` : ''}<small>${p.does}</small>
+  <small style="color:#7fd4ff">${p.mass} t${p.fuel ? ` + ${p.fuel} t fuel` : ''} · $${p.cost}M${p.thrust ? ` · ${p.thrust} kN` : ''}${p.gen ? ` · +${p.gen} kW` : ''}${p.sun ? ` · +${p.sun} kW in full sun` : ''}${p.use ? ` · uses ${p.use} kW` : ''}</small></div></div>`).join('');
+document.querySelectorAll('.part').forEach(el => el.onclick = () => addPart(el.dataset.k));
+cv.addEventListener('click', e => {
+  if (screen !== 'build' || tut !== null) return;
+  const r = cv.getBoundingClientRect(), x = (e.clientX - r.left) / r.width * W, y = (e.clientY - r.top) / r.height * H;
+  const hit = hitRects.find(q => x >= q.x - 4 && x <= q.x + q.w + 4 && y >= q.y - 2 && y <= q.y + q.h + 2);
+  selected = hit ? hit.i : -1; refresh();
+});
+$('build').addEventListener('click', e => { if (e.target.id === 'build') cv.dispatchEvent(new MouseEvent('click', e)); });
+addEventListener('keydown', e => {
+  if (screen === 'build' && selected >= 0) {
+    if (e.code === 'Delete' || e.code === 'Backspace') edit(0);
+    else if (e.code === 'ArrowUp') { e.preventDefault(); edit(-1); } else if (e.code === 'ArrowDown') { e.preventDefault(); edit(1); }
+    else if (e.code === 'Escape') { selected = -1; refresh(); }
+  } else if (screen === 'flight' && (e.code === 'Enter' || e.code === 'Escape' || e.code === 'Space')) showReport();
+});
+
+// ---------- screens ----------
+function go(s) {
+  screen = s; if (s !== 'build') tut = null;           // the tutorial ends on launch or on leaving the workshop
+  for (const el of document.querySelectorAll('.screen')) el.classList.toggle('on', el.id === s);
+  if (s === 'build') refresh();
+}
+document.querySelectorAll('[data-go]').forEach(el => el.onclick = () => go(el.dataset.go));
+$('tutStart').onclick = startTutorial;
+$('homeLink').onclick = () => location.href = '../index.html';
+$('tutSkip').onclick = () => { tut = null; refresh(); };
+$('cards').innerHTML = MISSIONS.map((m, i) => `<div class="card" data-i="${i}"><span class="lvl">${m.level}</span><h3>${m.name}</h3>
+  <span class="dim">Budget $${m.budget}M · sunlight ${m.sun * 100}%</span><ul>${m.brief.map(b => `<li>${b}</li>`).join('')}</ul></div>`).join('');
+document.querySelectorAll('.card').forEach(el => el.onclick = () => {
+  mission = MISSIONS[+el.dataset.i]; stack = designs[mission.key] = designs[mission.key] || []; selected = -1; go('build');
+});
+
+// ---------- flight ----------
+const STEP_TIME = 2.6;
+let fl = null;
+function launch() {
+  result = simulate(stack, mission);
+  fl = { t: 0, stars: Array.from({ length: 140 }, (_, i) => [(i * 311.7) % W, (i * 173.3 + i * i * 1.7) % H, 0.3 + (i % 6) / 8]), debris: [] };
+  selected = -1; $('flightLog').innerHTML = ''; go('flight');
+}
+$('skip').onclick = () => showReport();
+
+// Which stages are still attached at a given moment: a stage is gone once the Δv it supplied has been used.
+function partsLeft(usedDv) {
+  const st = result.a.stages; let cut = stack.length;
+  for (let j = st.length - 1; j > 0; j--) if (st[j].cum <= usedDv && st[j].dv > 0) cut = st[j].seg[0]; else break;
+  return stack.slice(0, cut);
+}
+function planet(x, y, r, body) {
+  const col = { earth: ['#2b62c4', '#3fa35a'], moon: ['#9aa0ad', '#70768a'], mars: ['#c4552f', '#8f3a22'], saturn: ['#d9b877', '#b8935a'] }[body];
+  if (body === 'saturn') { ctx.strokeStyle = '#c9b48a'; ctx.lineWidth = r * 0.16; ctx.beginPath(); ctx.ellipse(x, y, r * 1.9, r * 0.42, -0.3, 0, 7); ctx.stroke(); }
+  ctx.save(); ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fillStyle = col[0]; ctx.fill(); ctx.clip(); ctx.fillStyle = col[1];
+  if (body === 'saturn') for (let i = -3; i < 4; i += 2) ctx.fillRect(x - r, y + i * r * 0.22, r * 2, r * 0.16);
+  else for (let i = 0; i < 9; i++) { ctx.beginPath(); ctx.arc(x + Math.sin(i * 2.4) * r * 0.75, y + Math.cos(i * 1.7) * r * 0.75, r * (0.1 + (i % 3) * 0.07), 0, 7); ctx.fill(); }
+  ctx.restore();
+}
+function drawFlight(dt) {
+  fl.t += dt;
+  const steps = result.steps, idx = Math.min(steps.length - 1, Math.floor(fl.t / STEP_TIME)), st = steps[idx], p = (fl.t / STEP_TIME) % 1;
+  const done = fl.t >= steps.length * STEP_TIME, failedAt = steps.findIndex(s => s.ok === false);
+  const dead = failedAt >= 0 && idx >= failedAt, scene = dead ? steps[failedAt].scene : st.scene;
+  const stepDv = i => { for (let j = i; j >= 0; j--) { const m = mission.steps[j - 2]; if (m && m.dv) return m.dv; } return 0; };
+  const used = dead ? stepDv(failedAt - 1) : stepDv(idx - 1) + (stepDv(idx) - stepDv(idx - 1)) * p;
+  let parts = partsLeft(used);
+  if (scene === 'reentry') parts = stack.slice(0, (result.a.stages[1] || { seg: [stack.length] }).seg[0]);
+  if (fl.count !== undefined && parts.length < fl.count) fl.debris.push({ parts: stack.slice(parts.length, fl.count), y: 0, r: 0 });
+  fl.count = parts.length;
+
+  // background for the scene
+  const space = () => { ctx.fillStyle = '#05050c'; ctx.fillRect(0, 0, W, H); for (const [x, y, a] of fl.stars) { ctx.globalAlpha = a; ctx.fillStyle = '#fff'; ctx.fillRect(x, (y + fl.t * 12) % H, 2, 2); } ctx.globalAlpha = 1; };
+  let cx = 640, bottom = 470, scale = Math.min(1, 330 / Math.max(1, layout(parts).height)), flame = !dead, tilt = 0;
+  if (scene === 'pad' || scene === 'liftoff') {
+    const rise = scene === 'liftoff' && !dead ? p * p * 520 : 0;
+    ctx.fillStyle = '#58b4f0'; ctx.fillRect(0, 0, W, H); ctx.drawImage(art.pad, 0, rise, W, H);
+    scale = Math.min(1, 480 / Math.max(1, layout(parts).height)); bottom = 616 - rise * 0.25; flame = scene === 'liftoff' && result.a.twr > 0;
+    if (dead && scene === 'liftoff') bottom = 616;
+  } else if (scene === 'ascent') {
+    const g = ctx.createLinearGradient(0, 0, 0, H), k = dead ? 1 : p;
+    g.addColorStop(0, `rgb(${88 - 83 * k},${180 - 175 * k},${240 - 228 * k})`); g.addColorStop(1, `rgb(${157 - 152 * k},${223 - 218 * k},${249 - 237 * k})`);   // sunny sky fading to space
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H); ctx.globalAlpha = k; for (const [x, y, a] of fl.stars) { ctx.fillStyle = '#fff'; ctx.fillRect(x, (y + fl.t * 60) % H, 2, 2); } ctx.globalAlpha = 1;
+  } else if (scene === 'reentry') {
+    const g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, '#0c1436'); g.addColorStop(1, '#5aa0e0'); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = '#1d4f8f'; ctx.fillRect(0, 640, W, 80); flame = false;
+    scale = Math.min(1.3, 230 / Math.max(1, layout(parts).height)); bottom = dead ? 340 + p * 200 : 300 + p * 330;
+    if (!dead || steps[failedAt].why.includes('parachute.')) {
+      if (p < 0.45 || dead) { ctx.fillStyle = '#ffb04a'; ctx.globalAlpha = 0.55; ctx.beginPath(); ctx.ellipse(cx, bottom + 4, 62, 22, 0, 0, Math.PI); ctx.fill(); ctx.globalAlpha = 1; }   // re-entry glow
+    }
+    if (!dead && p >= 0.45) {                                                          // parachute canopy
+      const top = bottom - layout(parts).height * scale - 120;
+      ctx.strokeStyle = '#d8d6ee'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(cx - 90, top + 50); ctx.lineTo(cx, top + 118); ctx.lineTo(cx + 90, top + 50); ctx.stroke();
+      for (let i = 0; i < 6; i++) { ctx.fillStyle = i % 2 ? '#f3efe6' : '#ff8a2e'; ctx.beginPath(); ctx.moveTo(cx, top + 52); ctx.arc(cx, top + 52, 92, Math.PI + i * Math.PI / 6, Math.PI + (i + 1) * Math.PI / 6); ctx.fill(); }
+    }
+  } else {
+    space();
+    if (scene === 'orbit') planet(640, 1500, 900, 'earth');
+    if (scene === 'cruise') planet(980, 200, 30 + (dead ? 0.3 : p) * 110, mission.body);
+    if (scene === 'flyby') planet(980 - p * 700, 330, 220, mission.body);
+    if (scene === 'home') planet(980, 200, 30 + p * 110, 'earth');
+    if (scene === 'land') {
+      planet(640, 1560, 960, mission.body); scale = Math.min(scale, 250 / Math.max(1, layout(parts).height));
+      bottom = dead ? 598 : 330 + Math.min(1, p * 1.25) * 268; flame = !dead && p < 0.8;
+      if (dead && !steps[failedAt].why.startsWith('Out')) tilt = Math.min(1.45, p * 3);   // no legs: it tips over
+    }
+    if (scene === 'orbit' && st.sys) flame = false;
+  }
+  if (dead && scene !== 'pad' && scene !== 'liftoff' && scene !== 'land' && scene !== 'reentry') tilt = fl.t * 0.8;   // drifting, out of control
+
+  for (const d of fl.debris) {                                                         // dropped stages fall away
+    d.y += dt * 260; d.r += dt * 0.9;
+    ctx.save(); ctx.translate(cx - 40 - d.y * 0.2, bottom + d.y); ctx.rotate(d.r); drawStack(d.parts, 0, 0, scale * 0.9); ctx.restore();
+  }
+  const engines = new Set(); for (let i = parts.length - 1; i >= 0 && (parts[i] === 'engine' || parts[i] === 'legs'); i--) if (parts[i] === 'engine') engines.add(i);
+  ctx.save(); ctx.translate(cx, bottom); ctx.rotate(tilt); drawStack(parts, 0, 0, scale, flame && { flame: engines }); ctx.restore();
+
+  $('caption').textContent = done ? (result.success ? 'Mission complete' : 'Mission failed') : dead ? `${steps[failedAt].n}: failed` : st.n;
+  $('caption').style.color = dead ? '#ff7b85' : '#f3efe6';
+  const shown = Math.min(steps.length, idx + (p > 0.85 || done ? 1 : 0));
+  $('flightLog').innerHTML = steps.slice(0, shown).filter(s => !s.skipped).map(s => `<div class="${s.ok ? 'ok' : 'bad'}">${s.ok ? '✓' : '✗'} ${s.n}</div>`).join('');
+  if (fl.t > (failedAt >= 0 ? failedAt + 1.6 : steps.length + 0.6) * STEP_TIME) showReport();
+}
+
+// ---------- mission report ----------
+function showReport() {
+  if (screen !== 'flight') return;
+  const r = result, a = r.a, m = mission;
+  $('reportBox').innerHTML = `
+    <h2>${r.success ? 'Mission complete' : 'Mission failed'}: ${m.name}</h2>
+    <div class="stars">${'★'.repeat(r.stars)}<span style="color:#2c3152">${'★'.repeat(3 - r.stars)}</span></div>
+    <span class="dim">${r.success ? `Stars: 1 for success, 2 for using at most 92% of the budget, 3 for at most 85%. You used ${fmt(a.cost / m.budget * 100, 0)}%.` : 'Read the failed step, fix the design in the workshop, and launch again.'}</span><br>
+    ${r.steps.map(s => `<div class="step"><div class="mark ${s.skipped ? 'dim' : s.ok ? 'ok' : 'bad'}">${s.skipped ? '–' : s.ok ? '✓' : '✗'}</div><div><b>${s.n}</b>
+      <span class="dim" ${s.ok === false ? 'style="color:#ff9aa2;font-size:1.1cqw"' : ''}>${s.skipped ? 'Not reached' : s.why}</span></div></div>`).join('')}
+    <br><div class="row"><span>Cost</span><b>$${fmt(a.cost)}M of $${m.budget}M</b></div>
+    <div class="row"><span>Mass on the pad</span><b>${fmt(a.mass)} t</b></div>
+    <div class="row"><span>Total Δv</span><b>${fmt(a.dv, 0)} m/s in ${a.stages.filter(s => s.dv).length} burning stage(s)</b></div>
+    <div class="row"><span>Electricity made / used</span><b>${fmt(a.gen)} / ${fmt(a.use)} kW</b></div><br>
+    ${r.success ? `<div class="btn go hl" id="board">Chapter 2: board the spacecraft ›</div><br>` : ''}
+    <div class="btn ${r.success ? '' : 'go'}" id="again">Back to the workshop</div><div class="btn" id="other">Choose another mission</div><div class="btn" id="home">Main menu</div>`;
+  go('report');
+  $('again').onclick = () => go('build'); $('other').onclick = () => go('missions');
+  $('home').onclick = () => location.href = '../index.html';
+  if (r.success) $('board').onclick = () => location.href = `../hazlaoum/index.html?from=${m.key}`;
+}
+
+// ---------- main loop ----------
+const menuStars = Array.from({ length: 110 }, (_, i) => [(i * 197.3) % W, (i * 89.7 + i * i * 3.1) % H, 0.35 + (i % 7) / 10]);
+let last = performance.now(), spin = 0;
+function loop(now) {
+  const dt = Math.max(0, Math.min(0.05, (now - last) / 1000)); last = now;
+  if (screen === 'build') drawBuild();
+  else if (screen === 'flight') drawFlight(dt);
+  else if (screen !== 'report') {
+    ctx.fillStyle = '#07070d'; ctx.fillRect(0, 0, W, H); ctx.fillStyle = '#fff';
+    for (const [x, y, a] of menuStars) { ctx.globalAlpha = a; ctx.fillRect(x, y, 2, 2); } ctx.globalAlpha = 1;
+    if (screen === 'menu') {                             // a little rocket drifts across the title screen
+      spin += dt; const x = 1090 - ((spin * 14) % 1500), y = 150 + Math.sin(spin * 0.5) * 30;
+      ctx.save(); ctx.translate(x, y); ctx.rotate(-1.1); drawStack(['parachute', 'capsule', 'shield', 'tank', 'engine'], 0, 90, 0.55, { flame: new Set([4]) }); ctx.restore();
+    }
+  }
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>

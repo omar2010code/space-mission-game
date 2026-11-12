@@ -1,0 +1,10 @@
+# Only the playable game is published. Everything else in this folder stays local.
+/*
+!/.gitignore
+!/README.md
+!/index.html
+!/hazlaoum/
+!/rocket/
+
+# Raw generated images before cutting: not needed to play.
+/rocket/raw/

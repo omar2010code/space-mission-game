@@ -1,0 +1,412 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hazlaoum — adrift in orbit</title>
+<style>
+  html, body { margin:0; height:100%; background:#000; overflow:hidden; }
+  body { display:flex; align-items:center; justify-content:center; }
+  #stage { position:relative; width:min(100vw, calc(100vh * 1024 / 572)); aspect-ratio:1024 / 572;
+    background:#07070d; overflow:hidden; container-type:inline-size; user-select:none; }
+  canvas { position:absolute; inset:0; width:100%; height:100%; image-rendering:pixelated; }
+  .screen { position:absolute; inset:0; display:none; flex-direction:column; align-items:center; justify-content:center;
+    font-family:Georgia, "Times New Roman", serif; text-align:center; color:#a9a6c8; isolation:isolate; }
+  .screen.on { display:flex; }
+  .disc { position:absolute; left:50%; top:40%; width:44cqw; aspect-ratio:1; transform:translate(-50%,-50%);
+    border-radius:50%; background:#11121c; z-index:-1; }
+  .title { font-size:6.6cqw; color:#f3efe6; letter-spacing:.1cqw; }
+  .tagline { font-size:2.6cqw; letter-spacing:.35cqw; color:#b9b6d6; }
+  .orn { width:44cqw; height:1px; background:#8a88a8; margin:2.6cqw 0 5cqw; position:relative; }
+  .orn i { position:absolute; left:50%; top:50%; width:1.3cqw; height:1.3cqw; transform:translate(-50%,-50%) rotate(45deg);
+    border:1px solid #d8d6ee; background:#11121c; outline:.9cqw solid #11121c; }
+  .item { font-size:3.1cqw; margin:.7cqw 0; padding:.2cqw 4cqw; position:relative; cursor:pointer; transition:color .15s; white-space:nowrap; }
+  .item.sel { color:#fff; text-shadow:0 0 1.4cqw #ffffff66; }
+  .item.sel::before, .item.sel::after { content:"◆"; position:absolute; top:50%; transform:translateY(-50%); font-size:1.2cqw; color:#d8d6ee; }
+  .item.sel::before { left:1.2cqw; } .item.sel::after { right:1.2cqw; }
+  .item b { font-weight:normal; color:#f3efe6; display:inline-block; min-width:5cqw; }
+  .foot { position:absolute; bottom:4%; left:0; right:0; font:1.5cqw ui-monospace, Consolas, monospace; color:#5f6386; }
+  h2 { font-weight:normal; font-size:4.4cqw; color:#f3efe6; margin:0 0 1cqw; letter-spacing:.3cqw; }
+  #hud { position:absolute; left:0; right:0; bottom:2.2%; text-align:center; font:1.35cqw ui-monospace, Consolas, monospace;
+    color:#8f93b8; opacity:0; transition:opacity .6s; pointer-events:none; text-shadow:0 0 .4cqw #000; }
+  #fade { position:absolute; inset:0; background:#000; opacity:0; pointer-events:none; }
+</style>
+</head>
+<body>
+<div id="stage">
+  <canvas id="game" width="1024" height="572"></canvas>
+
+  <div class="screen on" id="menu">
+    <div class="disc"></div>
+    <div class="title">HAZLAOUM</div>
+    <div class="tagline">adrift in orbit</div>
+    <div class="orn"><i></i></div>
+    <div class="item sel" data-act="start">Start game</div>
+    <div class="item" data-act="settings">Settings</div>
+    <div class="item" data-act="home">Main menu</div>
+    <div class="foot">NASA Space Apps 2026 · Space mission design game</div>
+  </div>
+
+  <div class="screen" id="settings">
+    <div class="disc"></div>
+    <h2>Settings</h2>
+    <div class="orn" style="margin:1.6cqw 0 3cqw"><i></i></div>
+    <div class="item sel" data-act="volume">Volume &nbsp;<span data-step="-1">&nbsp;‹&nbsp;</span><b id="volVal">5</b><span data-step="1">&nbsp;›&nbsp;</span></div>
+    <div class="item" data-act="fullscreen">Fullscreen &nbsp;<b id="fsVal">Off</b></div>
+    <div class="item" data-act="back">Back</div>
+    <div class="foot">↑ ↓ select · ← → change · Enter confirm · Esc back</div>
+  </div>
+
+  <div id="hud">WASD / arrow keys to push off · float into a hatch to change room · M for map · Esc for menu</div>
+  <div id="fade"></div>
+</div>
+
+<script>
+const W = 1024, H = 572;
+const cv = document.getElementById('game'), ctx = cv.getContext('2d');
+const $ = id => document.getElementById(id);
+const DEBUG = location.search.includes('debug');
+
+// ---------- assets ----------
+const img = src => Object.assign(new Image(), { src: 'assets/' + src });
+const POSES = ['idle', 'left', 'right', 'up', 'down', 'tumble'];
+const haz = Object.fromEntries(POSES.map(p => [p, img(`haz_${p}.png`)]));
+
+// ---------- rooms ----------
+// floor: convex polygon the player must stay inside (clockwise). blocks: solid equipment [x, y, w, h].
+// hatches: float into `zone` to travel; you arrive at `spawn` drifting with `vel`.
+// map: the room's outline and label position on the ship map (M key).
+// The ship is one stack, as on the real Apollo: engine - science - command - tunnel - lander cabin - descent bay.
+const ROOMS = {
+  engine: {
+    name: 'Engine & Power Bay', sub: 'Service Module', bg: img('room_engine.png'),
+    floor: [[292,128],[732,128],[866,212],[866,396],[726,528],[298,528],[158,396],[158,176]],
+    blocks: [[292,60,156,100],[578,60,64,100],[694,104,84,128],[770,182,96,200],[166,100,90,112],
+             [158,236,164,164],[358,318,314,146]],
+    hatches: [{ zone: [468,100,90,62], to: 'science', spawn: [512,425], vel: [0,-70] }],
+    map: { pts: [[110,206],[270,206],[270,366],[110,366]], label: [190,400] },
+  },
+  science: {
+    name: 'Science & Comms Bay', sub: 'Service Module', bg: img('room_science.png'),
+    floor: [[205,142],[815,142],[932,170],[932,405],[820,512],[200,512],[92,405],[92,170]],
+    blocks: [[303,100,142,80],[585,85,115,85],[100,165,145,125],[240,178,68,68],[718,138,135,108],
+             [768,255,85,72],[866,183,66,140],[180,376,132,140],[316,450,78,66],[680,395,145,122]],
+    hatches: [{ zone: [468,120,88,50], to: 'command', spawn: [512,425], vel: [0,-70] },
+              { zone: [470,470,88,50], to: 'engine', spawn: [512,215], vel: [0,70] }],
+    map: { pts: [[270,206],[420,206],[420,366],[270,366]], label: [345,172] },
+  },
+  command: {
+    name: 'Command Room', sub: 'Command Module', bg: img('room_command.png'),
+    floor: [[275,178],[748,178],[848,262],[848,402],[738,518],[272,518],[168,408],[168,262]],
+    // the flight console is split in two: he floats over the middle seat to reach the overhead docking hatch
+    blocks: [[378,150,94,98],[552,150,94,98],[748,140,100,162],[196,170,84,78],[176,256,58,72],[176,336,64,76],
+             [238,416,174,104],[646,428,146,92],[472,322,82,70]],
+    hatches: [{ zone: [472,178,80,42], to: 'tunnel', spawn: [512,420], vel: [0,-60] },
+              { zone: [468,480,90,60], to: 'science', spawn: [512,215], vel: [0,70] }],
+    start: [512,440],
+    map: { pts: [[420,206],[600,256],[600,316],[420,366]], label: [505,400] },
+  },
+  tunnel: {
+    name: 'Docking Tunnel', sub: 'Between the two spacecraft', bg: img('room_tunnel.png'),
+    floor: [[450,40],[575,40],[575,532],[450,532]],
+    blocks: [],
+    hatches: [{ zone: [455,40,115,58], to: 'lm', spawn: [512,430], vel: [0,-40] },
+              { zone: [455,474,115,58], to: 'command', spawn: [512,275], vel: [0,20] }],
+    map: { pts: [[600,266],[650,266],[650,306],[600,306]], label: [625,172] },
+  },
+  lm: {
+    name: 'Lunar Module Cabin', sub: 'Lander · ascent stage', bg: img('room_lm.png'),
+    floor: [[210,200],[815,200],[822,230],[822,418],[722,512],[298,512],[200,418],[200,230]],
+    blocks: [[222,160,216,90],[314,212,38,62],[590,160,155,90],[670,212,40,62],[742,175,64,88],
+             [474,308,76,90],[232,362,136,142],[722,372,98,98],[672,462,56,46]],
+    hatches: [{ zone: [468,180,88,46], to: 'descent', spawn: [512,400], vel: [0,-60] },
+              { zone: [468,468,88,50], to: 'tunnel', spawn: [512,150], vel: [0,60] }],
+    map: { pts: [[650,236],[730,226],[770,246],[770,326],[730,346],[650,336]], label: [712,400] },
+  },
+  descent: {
+    name: 'Descent Bay', sub: 'Lander · descent stage', bg: img('room_descent.png'),
+    floor: [[215,125],[808,125],[892,150],[892,425],[812,505],[212,505],[130,425],[130,205]],
+    blocks: [[150,65,150,135],[348,55,82,108],[440,45,145,155],[602,60,62,98],[722,115,170,135],[840,230,52,62],
+             [130,245,75,100],[820,325,72,100],[175,395,170,112],[620,418,152,90],[774,435,60,70]],
+    hatches: [{ zone: [470,462,88,50], to: 'lm', spawn: [512,272], vel: [0,40] }],
+    map: { pts: [[770,236],[800,206],[870,206],[900,236],[900,336],[870,366],[800,366],[770,336]], label: [835,172] },
+  },
+};
+const visited = new Set();
+let mapOpen = false;
+
+// ---------- settings + sound ----------
+const save = { volume: 5 };
+try { Object.assign(save, JSON.parse(localStorage.getItem('hazlaoum') || '{}')); } catch (e) {}
+const persist = () => { try { localStorage.setItem('hazlaoum', JSON.stringify(save)); } catch (e) {} };
+
+let ac, master;
+function audio() {                                   // browsers only allow sound after a key or click
+  if (ac) return ac;
+  try {
+    ac = new AudioContext(); master = ac.createGain(); master.connect(ac.destination); setVolume();
+    const lp = ac.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 180; lp.connect(master);
+    for (const f of [55, 55.7, 82.5]) {              // soft ship hum
+      const o = ac.createOscillator(), g = ac.createGain();
+      o.type = 'sawtooth'; o.frequency.value = f; g.gain.value = 0.05; o.connect(g).connect(lp); o.start();
+    }
+  } catch (e) { ac = null; }
+  return ac;
+}
+function setVolume() { if (master) master.gain.value = save.volume / 10; }
+function thump(freq, len, vol) {                     // wall bump / hatch sound
+  if (!audio()) return;
+  const o = ac.createOscillator(), g = ac.createGain(), t = ac.currentTime;
+  o.frequency.setValueAtTime(freq, t); o.frequency.exponentialRampToValueAtTime(freq / 3, t + len);
+  g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.001, t + len);
+  o.connect(g).connect(master); o.start(t); o.stop(t + len);
+}
+
+// ---------- state ----------
+let state = 'menu';                                  // menu | settings | play
+let room = ROOMS.command, roomTitleT = 9;
+const P = { x: 512, y: 440, vx: 0, vy: 0, rot: 0, spin: 0, t: 0, pose: 'idle' };
+const puffs = [];
+const stars = Array.from({ length: 90 }, (_, i) => ({ x: (i * 197.3) % W, y: (i * 89.7 + i * i * 3.1) % H, a: 0.35 + (i % 7) / 10 }));
+const drifter = { x: 880, y: 110, vx: -9, vy: 5, rot: 0.3 };
+const keys = {};
+
+// ---------- fade (Hollow Knight style: out to black, hold, in) ----------
+const fade = { a: 0, dir: 0, hold: 0, mid: null };
+function fadeThrough(mid) { if (fade.dir) return; fade.dir = 1; fade.mid = mid; }
+function updateFade(dt) {
+  if (fade.dir === 1) { fade.a += dt / 0.35; if (fade.a >= 1) { fade.a = 1; fade.dir = 2; fade.hold = 0.28; fade.mid(); } }
+  else if (fade.dir === 2) { fade.hold -= dt; if (fade.hold <= 0) fade.dir = -1; }
+  else if (fade.dir === -1) { fade.a -= dt / 0.5; if (fade.a <= 0) { fade.a = 0; fade.dir = 0; } }
+  $('fade').style.opacity = fade.a;
+}
+
+function show(s) {
+  state = s;
+  $('menu').classList.toggle('on', s === 'menu');
+  $('settings').classList.toggle('on', s === 'settings');
+  $('hud').style.opacity = s === 'play' ? 1 : 0;
+}
+function enterRoom(key, spawn, vel) {
+  room = ROOMS[key]; roomTitleT = 0; puffs.length = 0; visited.add(key);
+  Object.assign(P, { x: spawn[0], y: spawn[1], vx: vel[0], vy: vel[1], rot: 0, spin: 0 });
+}
+
+// ---------- menus ----------
+const sel = { menu: 0, settings: 0 };
+const items = s => [...$(s).querySelectorAll('.item')];
+function highlight(s) { items(s).forEach((el, i) => el.classList.toggle('sel', i === sel[s])); }
+function refreshSettings() { $('volVal').textContent = save.volume; $('fsVal').textContent = document.fullscreenElement ? 'On' : 'Off'; }
+function activate(act, step) {
+  audio();
+  if (act === 'start') fadeThrough(() => { mapOpen = false; enterRoom('command', ROOMS.command.start, [0, -30]); show('play'); });
+  else if (act === 'settings') { sel.settings = 0; highlight('settings'); refreshSettings(); show('settings'); }
+  else if (act === 'back') show('menu');
+  else if (act === 'home') location.href = '../index.html';
+  else if (act === 'volume') {                       // arrows step down/up; Enter or a plain click steps up and wraps 10 -> 0
+    save.volume = step ? Math.max(0, Math.min(10, save.volume + step)) : (save.volume + 1) % 11;
+    setVolume(); persist(); refreshSettings(); thump(220, 0.12, 0.3);
+  }
+  else if (act === 'fullscreen' && !step) {
+    (document.fullscreenElement ? document.exitFullscreen() : $('stage').requestFullscreen()).catch(() => {});
+  }
+}
+document.addEventListener('fullscreenchange', refreshSettings);
+for (const s of ['menu', 'settings']) items(s).forEach((el, i) => {
+  el.addEventListener('pointerenter', () => { sel[s] = i; highlight(s); });
+  el.addEventListener('click', e => {                 // clicking the ‹ or › arrow steps down or up
+    sel[s] = i; highlight(s); activate(el.dataset.act, +(e.target.dataset.step || 0));
+  });
+});
+
+addEventListener('keydown', e => {
+  if (ac && ac.state === 'suspended') ac.resume();    // sound started before any key press: wake it up now
+  if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) e.preventDefault();
+  keys[e.code] = true;
+  if (fade.dir || e.repeat && state !== 'settings') return;
+  if (state === 'play') {
+    if (e.code === 'KeyM') mapOpen = !mapOpen;
+    else if (e.code === 'Escape') { if (mapOpen) mapOpen = false; else fadeThrough(() => show('menu')); }
+    return;
+  }
+  const list = items(state), n = list.length, act = list[sel[state]].dataset.act;
+  if (e.code === 'ArrowUp' || e.code === 'KeyW') sel[state] = (sel[state] + n - 1) % n;
+  else if (e.code === 'ArrowDown' || e.code === 'KeyS') sel[state] = (sel[state] + 1) % n;
+  else if (e.code === 'Enter' || e.code === 'Space') activate(act);
+  else if (state === 'settings' && (e.code === 'ArrowLeft' || e.code === 'KeyA')) activate(act, -1);
+  else if (state === 'settings' && (e.code === 'ArrowRight' || e.code === 'KeyD')) activate(act, 1);
+  else if (state === 'settings' && e.code === 'Escape') show('menu');
+  highlight(state);
+});
+addEventListener('keyup', e => { keys[e.code] = false; });
+addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
+
+// ---------- zero-gravity movement ----------
+const R = 17, PUSH = 230, DRAG = 0.35, MAXV = 230, BOUNCE = 0.55;
+
+function hit(nx, ny) {                               // reflect velocity off a surface with normal (nx, ny)
+  const vn = P.vx * nx + P.vy * ny;
+  if (vn >= 0) return;
+  P.vx -= (1 + BOUNCE) * vn * nx; P.vy -= (1 + BOUNCE) * vn * ny;
+  if (-vn > 60) {                                    // a real bump sends him tumbling
+    P.spin = Math.max(-9, Math.min(9, P.spin + (P.vx * ny - P.vy * nx >= 0 ? 1 : -1) * -vn / 22));
+    thump(90, 0.18, Math.min(0.5, -vn / 400));
+  }
+}
+
+function updatePlayer(dt) {
+  const ix = (keys.ArrowRight || keys.KeyD ? 1 : 0) - (keys.ArrowLeft || keys.KeyA ? 1 : 0);
+  const iy = (keys.ArrowDown || keys.KeyS ? 1 : 0) - (keys.ArrowUp || keys.KeyW ? 1 : 0);
+  const il = Math.hypot(ix, iy) || 1, locked = fade.dir !== 0;
+  if (!locked && (ix || iy)) {
+    P.vx += ix / il * PUSH * dt; P.vy += iy / il * PUSH * dt;
+    if (Math.random() < dt * 28) puffs.push({                       // little gas jets, opposite to the push
+      x: P.x - ix / il * 16, y: P.y - iy / il * 20, vx: -ix / il * 90 + (Math.random() - 0.5) * 40,
+      vy: -iy / il * 90 + (Math.random() - 0.5) * 40, life: 0.45 });
+  }
+  const k = Math.exp(-DRAG * dt); P.vx *= k; P.vy *= k;             // almost no friction: he keeps gliding
+  const sp = Math.hypot(P.vx, P.vy);
+  if (sp > MAXV) { P.vx *= MAXV / sp; P.vy *= MAXV / sp; }
+  P.x += P.vx * dt; P.y += P.vy * dt; P.t += dt;
+
+  // A few passes so corners between equipment and walls settle; the walls go last so they always win.
+  const f = room.floor;
+  for (let pass = 0; pass < 3; pass++) {
+    for (const [bx, by, bw, bh] of room.blocks) {                   // bounce off equipment
+      const cx = Math.max(bx, Math.min(P.x, bx + bw)), cy = Math.max(by, Math.min(P.y, by + bh));
+      let dx = P.x - cx, dy = P.y - cy, d = Math.hypot(dx, dy);
+      if (d >= R) continue;
+      if (d === 0) {                                                // centre got inside: push out the nearest side
+        const l = P.x - bx, r = bx + bw - P.x, t = P.y - by, b = by + bh - P.y, m = Math.min(l, r, t, b);
+        dx = m === l ? -1 : m === r ? 1 : 0; dy = m === t ? -1 : m === b ? 1 : 0; d = 1;
+        P.x += dx * (m + R); P.y += dy * (m + R);
+      } else { P.x += dx / d * (R - d); P.y += dy / d * (R - d); }
+      hit(dx / d, dy / d);
+    }
+    for (let i = 0; i < f.length; i++) {                            // stay inside the floor polygon
+      const [ax, ay] = f[i], [bx, by] = f[(i + 1) % f.length];
+      const ex = bx - ax, ey = by - ay, len = Math.hypot(ex, ey), nx = -ey / len, ny = ex / len;   // inward normal
+      const d = (P.x - ax) * nx + (P.y - ay) * ny;
+      if (d < R) { P.x += (R - d) * nx; P.y += (R - d) * ny; hit(nx, ny); }
+    }
+  }
+
+  // body language: lean into the drift, tumble after a bump, settle upright again
+  P.spin *= Math.exp(-1.1 * dt); P.rot += P.spin * dt;
+  if (Math.abs(P.spin) < 1.2) {
+    P.rot = Math.atan2(Math.sin(P.rot), Math.cos(P.rot));
+    P.rot += (P.vx / MAXV * 0.45 - P.rot) * Math.min(1, dt * 3);
+  }
+  const s2 = Math.hypot(P.vx, P.vy);
+  P.pose = Math.abs(P.spin) > 1.2 ? 'tumble' : s2 < 22 ? 'idle'
+         : Math.abs(P.vx) > Math.abs(P.vy) ? (P.vx < 0 ? 'left' : 'right') : (P.vy < 0 ? 'up' : 'down');
+
+  if (!locked) for (const h of room.hatches) {
+    const [zx, zy, zw, zh] = h.zone;
+    if (P.x > zx && P.x < zx + zw && P.y > zy && P.y < zy + zh) {
+      thump(140, 0.4, 0.35);
+      fadeThrough(() => enterRoom(h.to, h.spawn, h.vel));
+    }
+  }
+  for (let i = puffs.length - 1; i >= 0; i--) {
+    const p = puffs[i]; p.life -= dt; p.x += p.vx * dt; p.y += p.vy * dt;
+    if (p.life <= 0) puffs.splice(i, 1);
+  }
+}
+
+// ---------- drawing ----------
+function drawHaz(x, y, rot, pose, scale) {
+  const im = haz[pose]; if (!im.width) return;
+  ctx.save(); ctx.translate(Math.round(x), Math.round(y)); ctx.rotate(rot); ctx.scale(scale, scale);
+  ctx.drawImage(im, -im.width / 2, -im.height / 2);
+  ctx.restore();
+}
+
+function drawPlay() {
+  ctx.drawImage(room.bg, 0, 0, W, H);
+  const bob = Math.sin(P.t * 1.7) * 4;
+  ctx.fillStyle = '#00000055';                                      // shadow stays put, far below: he reads as floating
+  ctx.beginPath(); ctx.ellipse(P.x, P.y + 46, 15 - bob * 0.4, 5, 0, 0, 7); ctx.fill();
+  for (const p of puffs) { ctx.globalAlpha = p.life * 2; ctx.fillStyle = '#e8f4ff'; ctx.fillRect(Math.round(p.x) - 2, Math.round(p.y) - 2, 4, 4); }
+  ctx.globalAlpha = 1;
+  drawHaz(P.x, P.y + bob - 6, P.rot, P.pose, 0.9);
+
+  if (roomTitleT < 3.2) {                                           // room name fades in and out on arrival
+    ctx.globalAlpha = Math.max(0, Math.min(1, roomTitleT / 0.6, (3.2 - roomTitleT) / 0.8));
+    ctx.textAlign = 'center'; ctx.fillStyle = '#000c'; ctx.fillRect(0, 248, W, 76);
+    ctx.fillStyle = '#f3efe6'; ctx.font = '34px Georgia, serif'; ctx.fillText(room.name, W / 2, 288);
+    ctx.fillStyle = '#b9b6d6'; ctx.font = '14px Georgia, serif'; ctx.fillText(room.sub.toUpperCase().split('').join(' '), W / 2, 311);
+    ctx.globalAlpha = 1;
+  }
+  if (DEBUG) {
+    ctx.lineWidth = 2; ctx.strokeStyle = '#0f0'; ctx.beginPath(); room.floor.forEach(([x, y], i) => i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)); ctx.closePath(); ctx.stroke();
+    ctx.strokeStyle = '#f33'; room.blocks.forEach(b => ctx.strokeRect(...b));
+    ctx.strokeStyle = '#ff0'; room.hatches.forEach(h => ctx.strokeRect(...h.zone));
+    ctx.strokeStyle = '#0ff'; ctx.beginPath(); ctx.arc(P.x, P.y, R, 0, 7); ctx.stroke();
+  }
+}
+
+// Ship map: the whole stack side-on. Rooms you have been in are lit, the one you are in is cyan.
+function drawMap() {
+  ctx.fillStyle = '#05050bee'; ctx.fillRect(0, 0, W, H);
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#f3efe6'; ctx.font = '32px Georgia, serif'; ctx.fillText('Ship Map', W / 2, 70);
+  ctx.fillStyle = '#b9b6d6'; ctx.font = '14px Georgia, serif'; ctx.fillText('A P O L L O   C S M   +   L U N A R   M O D U L E', W / 2, 96);
+
+  ctx.lineWidth = 2; ctx.strokeStyle = '#3a4060'; ctx.fillStyle = '#12131f';   // parts you cannot enter
+  const shape = pts => { ctx.beginPath(); pts.forEach(([x, y], i) => i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)); ctx.closePath(); };
+  shape([[62,246],[110,264],[110,308],[62,326]]); ctx.fill(); ctx.stroke();                    // main engine bell
+  shape([[900,262],[940,250],[940,322],[900,310]]); ctx.fill(); ctx.stroke();                  // descent engine bell
+  ctx.beginPath();                                                                             // landing legs
+  for (const [x1, y1, x2, y2] of [[800,206,770,150],[870,206,915,150],[800,366,770,422],[870,366,915,422]]) { ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); }
+  ctx.stroke();
+
+  let cur;
+  for (const key in ROOMS) {
+    const r = ROOMS[key], here = r === room, seen = visited.has(key);
+    shape(r.map.pts);
+    ctx.fillStyle = here ? '#1d4a63' : seen ? '#232742' : '#12131f'; ctx.fill();
+    ctx.strokeStyle = here ? '#7fd4ff' : seen ? '#a9a6c8' : '#3a4060'; ctx.lineWidth = here ? 3 : 2; ctx.stroke();
+    const cx = r.map.pts.reduce((s, p) => s + p[0], 0) / r.map.pts.length, [lx, ly] = r.map.label;
+    ctx.strokeStyle = '#3a4060'; ctx.lineWidth = 1;                                             // leader line to the label
+    ctx.beginPath(); ctx.moveTo(cx, ly < 286 ? 206 : 366); ctx.lineTo(lx, ly < 286 ? ly + 8 : ly - 16); ctx.stroke();
+    ctx.fillStyle = here ? '#7fd4ff' : seen ? '#f3efe6' : '#6b6f8f'; ctx.font = '15px Georgia, serif';
+    ctx.fillText(seen ? r.name : '? ? ?', lx, ly);
+    if (here) cur = [cx, 286];
+  }
+  ctx.fillStyle = '#f3efe6';                                                                    // hatches between rooms
+  for (const x of [270, 420, 600, 650, 770]) { ctx.beginPath(); ctx.arc(x, 286, 5, 0, 7); ctx.fill(); }
+  if (cur) drawHaz(cur[0], cur[1] + Math.sin(P.t * 3) * 3, 0, 'idle', 0.55);                    // you are here
+  ctx.fillStyle = '#7fd4ff'; ctx.font = '13px ui-monospace, Consolas, monospace';
+  ctx.fillText('you are in: ' + room.name, W / 2, 470);
+  ctx.fillStyle = '#5f6386'; ctx.fillText('M or Esc to close', W / 2, 520);
+}
+
+function drawMenu(dt) {
+  ctx.fillStyle = '#07070d'; ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = '#fff';
+  for (const s of stars) { ctx.globalAlpha = s.a; ctx.fillRect(s.x | 0, s.y | 0, 2, 2); }
+  ctx.globalAlpha = 1;
+  const d = drifter;                                                // Hazlaoum tumbles slowly across the title screen
+  d.x += d.vx * dt; d.y += d.vy * dt; d.rot += dt * 0.25;
+  if (d.x < -60) d.x = W + 60; if (d.y > H + 60) d.y = -60;
+  drawHaz(d.x, d.y, d.rot, 'idle', 1);
+}
+
+let last = performance.now();
+function loop(now) {
+  const dt = Math.min(0.033, (now - last) / 1000); last = now;
+  updateFade(dt);
+  if (state === 'play') {
+    if (mapOpen) { P.t += dt; drawPlay(); drawMap(); }                // the game pauses while the map is open
+    else { updatePlayer(dt); roomTitleT += dt; drawPlay(); }
+  } else drawMenu(dt);
+  requestAnimationFrame(loop);
+}
+ctx.imageSmoothingEnabled = false;
+requestAnimationFrame(loop);
+// Arriving from a successful launch in the rocket workshop: skip the title and go straight aboard.
+if (new URLSearchParams(location.search).has('from')) activate('start');
+</script>
+</body>
+</html>
