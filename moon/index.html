@@ -1,0 +1,352 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hazlaoum — moon rescue</title>
+<style>
+  html, body { margin:0; height:100%; background:#000; overflow:hidden; }
+  body { display:flex; align-items:center; justify-content:center; }
+  #stage { position:relative; width:min(100vw, calc(100vh * 16 / 9)); aspect-ratio:16 / 9; background:#07070d; overflow:hidden;
+    container-type:inline-size; user-select:none; font-family:Georgia, "Times New Roman", serif; color:#a9a6c8; }
+  canvas { position:absolute; inset:0; width:100%; height:100%; }
+  .screen { position:absolute; inset:0; display:none; flex-direction:column; align-items:center; justify-content:center; text-align:center; }
+  .screen.on { display:flex; }
+  .shade { background:#07070de6; }
+  .title { font-size:6.2cqw; color:#f3efe6; }
+  .tagline { font-size:2.4cqw; letter-spacing:.35cqw; color:#b9b6d6; }
+  .orn { width:40cqw; height:1px; background:#8a88a8; margin:2.2cqw 0 3.4cqw; position:relative; }
+  .orn i { position:absolute; left:50%; top:50%; width:1.2cqw; height:1.2cqw; transform:translate(-50%,-50%) rotate(45deg);
+    border:1px solid #d8d6ee; background:#07070d; outline:.8cqw solid #07070d; }
+  .item { font-size:2.8cqw; margin:.5cqw 0; padding:.2cqw 3.5cqw; cursor:pointer; position:relative; }
+  .item:hover { color:#fff; text-shadow:0 0 1.2cqw #ffffff66; }
+  .item:hover::before, .item:hover::after { content:"◆"; position:absolute; top:50%; transform:translateY(-50%); font-size:1.1cqw; color:#d8d6ee; }
+  .item:hover::before { left:1cqw; } .item:hover::after { right:1cqw; }
+  .foot { position:absolute; bottom:3.5%; left:0; right:0; text-align:center; color:#5f6386; font:1.2cqw ui-monospace, Consolas, monospace; }
+  h2 { font-weight:normal; font-size:3.4cqw; color:#f3efe6; margin:0 0 1cqw; }
+  .brief { display:flex; gap:2cqw; align-items:flex-start; width:62%; text-align:left; font-size:1.55cqw; line-height:1.5; color:#c9c7e4; }
+  .brief img { width:6cqw; image-rendering:pixelated; flex:0 0 auto; }
+  .brief b { color:#ffcf5a; font-weight:normal; }
+  .brief li { margin-bottom:.5cqw; }
+  .mono { font-family:ui-monospace, Consolas, monospace; }
+  #hud { position:absolute; inset:0; display:none; pointer-events:none; font:1.25cqw ui-monospace, Consolas, monospace; color:#f3efe6; }
+  #hud.on { display:block; }
+  .box { position:absolute; background:#0b0c16dd; border:1px solid #262a44; border-radius:.5cqw; padding:.6cqw .9cqw; }
+  #o2 { left:1.5%; top:2.5%; width:19%; }
+  #o2 .bar { height:.8cqw; background:#1c1f34; border-radius:.4cqw; overflow:hidden; margin-top:.3cqw; }
+  #o2 .bar i { display:block; height:100%; background:#6fe39a; }
+  #goal { left:50%; top:2.5%; transform:translateX(-50%); text-align:center; max-width:52%; }
+  #goal small { display:block; color:#8f93b8; font-size:1cqw; }
+  #sample { right:1.5%; top:2.5%; }
+  #prompt { left:50%; bottom:11%; transform:translateX(-50%); border-color:#ffcf5a; color:#ffcf5a; font-size:1.5cqw; display:none; pointer-events:auto; cursor:pointer; }
+  #keys { left:50%; bottom:2.5%; transform:translateX(-50%); color:#8f93b8; font-size:1cqw; white-space:nowrap; }
+</style>
+</head>
+<body>
+<div id="stage">
+  <canvas id="cv" width="1280" height="720"></canvas>
+
+  <div id="hud">
+    <div class="box" id="o2">Oxygen <span id="o2t"></span><div class="bar"><i id="o2bar"></i></div></div>
+    <div class="box" id="goal"></div>
+    <div class="box" id="sample">Sample: <span id="sampleT">not found</span></div>
+    <div class="box" id="prompt"></div>
+    <div class="box" id="keys">W A S D or arrow keys to drive · E to pick up · Esc for menu</div>
+  </div>
+
+  <div class="screen on shade" id="menu">
+    <div class="title">HAZLAOUM</div>
+    <div class="tagline">moon rescue</div>
+    <div class="orn"><i></i></div>
+    <div class="item" data-act="brief">Start the drive</div>
+    <div class="item" data-act="home">Main menu</div>
+    <div class="foot">NASA Space Apps 2026 · Space mission design game</div>
+  </div>
+
+  <div class="screen shade" id="brief">
+    <h2>Mission briefing</h2>
+    <div class="orn" style="margin:1.2cqw 0 2cqw"><i></i></div>
+    <div class="brief"><img src="assets/haz_idle.png" alt="">
+      <ul style="margin:0;padding-left:1.4cqw">
+        <li>Our science rover stopped answering three days ago. Before it broke down it collected an <b>important sample</b>.</li>
+        <li>There is no road. The rover left the lander on its own, so follow its <b>wheel tracks</b> in the dust.</li>
+        <li>Halfway there you cross into the <b>lunar night</b>. Only your headlights show the <b>rover's wheel tracks</b> in the dust.</li>
+        <li>A blue <b>marker every 200 m</b> shows how far it is to the rover and which way to go. With the sample on board, the markers count down to the lander.</li>
+        <li>Take the sample and bring it back to the lander. Hazlaoum will fly it to Earth so the science team can find out why the rover broke.</li>
+        <li>You have <b>4 minutes of oxygen</b>. Wrong turns cost air. Craters slow the buggy down and boulders stop it.</li>
+      </ul></div>
+    <div class="item" data-act="start" style="margin-top:2cqw">Drive</div>
+  </div>
+
+  <div class="screen shade" id="end">
+    <h2 id="endTitle"></h2>
+    <div class="orn" style="margin:1.2cqw 0 2cqw"><i></i></div>
+    <div class="brief"><img src="assets/haz_idle.png" alt=""><div id="endText"></div></div>
+    <div class="item" data-act="start" style="margin-top:2cqw" id="endAgain">Drive again</div>
+    <div class="item" data-act="home">Main menu</div>
+  </div>
+</div>
+
+<script>
+const W = 1280, H = 720, cv = document.getElementById('cv'), ctx = cv.getContext('2d');
+const $ = id => document.getElementById(id);
+const img = n => Object.assign(new Image(), { src: `assets/${n}.png` });
+const art = { buggy: img('buggy'), rover: img('rover'), lander: img('lander'), crater: img('crater'), rock: img('rock') };
+
+// ---------- the map ----------
+// Everything is laid out on a small grid and scaled up by S, so the drive takes about a minute each way.
+const S = 3, WW = 4200 * S, WH = 3000 * S, OXYGEN = 240, PX_PER_M = 6;   // 4 minutes of air; 6 pixels are 1 metre
+const NIGHT_X = 2650 * S;                                    // east of this line the ground is in the long lunar night
+const P = pts => pts.map(([x, y]) => [x * S, y * S]);
+const LANDER = { x: 520 * S, y: 2560 * S }, ROVER = { x: 3720 * S, y: 360 * S, ang: 0.7 };
+const MAIN = P([[560, 2520], [900, 2380], [1300, 2300], [1700, 1950], [2100, 1800], [2500, 1500], [2900, 1380], [3100, 1100]]);
+const TRACKS = P([[3100, 1100], [3260, 960], [3460, 1040], [3620, 860], [3470, 600], [3600, 440], [3720, 360]]);
+
+// A smooth curve through the points, as a list of points about `step` apart.
+function curve(pts, step) {
+  const out = [], g = i => pts[Math.max(0, Math.min(pts.length - 1, i))];
+  for (let i = 0; i < pts.length - 1; i++) {
+    const [p0, p1, p2, p3] = [g(i - 1), g(i), g(i + 1), g(i + 2)], n = Math.max(2, Math.ceil(Math.hypot(p2[0] - p1[0], p2[1] - p1[1]) / step));
+    for (let j = 0; j < n; j++) {
+      const t = j / n, t2 = t * t, t3 = t2 * t;
+      out.push([0, 1].map(k => 0.5 * (2 * p1[k] + (p2[k] - p0[k]) * t + (2 * p0[k] - 5 * p1[k] + 4 * p2[k] - p3[k]) * t2 + (3 * p1[k] - p0[k] - 3 * p2[k] + p3[k]) * t3)));
+    }
+  }
+  out.push(pts[pts.length - 1]);
+  return out;
+}
+// No road: the only trail is the lost rover's own wheel tracks, from the lander all the way to where it broke down.
+const tracks = curve([...MAIN, ...TRACKS.slice(1)], 16);
+// A marker every 200 m along the route from the lander to the rover. It shows the distance left and points the way.
+const ROUTE = tracks, MARKS = [], EVERY = 200 * PX_PER_M;
+{ let s = 0, next = EVERY;
+  for (let i = 1; i < ROUTE.length; i++) {
+    const [x0, y0] = ROUTE[i - 1], [x1, y1] = ROUTE[i], d = Math.hypot(x1 - x0, y1 - y0);
+    while (s + d >= next) {
+      const k = (next - s) / d, a = Math.atan2(y1 - y0, x1 - x0), side = MARKS.length % 2 ? 1 : -1;
+      MARKS.push({ x: x0 + (x1 - x0) * k + Math.cos(a + Math.PI / 2) * 44 * side, y: y0 + (y1 - y0) * k + Math.sin(a + Math.PI / 2) * 44 * side, a, from: next });
+      next += EVERY;
+    }
+    s += d;
+  }
+  for (const m of MARKS) { m.toRover = Math.round((s - m.from) / PX_PER_M / 10) * 10; m.toLander = Math.round(m.from / PX_PER_M / 10) * 10; }
+}
+const SIGNS = [
+  { x: LANDER.x + 330, y: LANDER.y - 250, t: ['ROVER DEPARTED HERE', 'follow its tracks · marker every 200 m'] },
+  { x: MAIN[MAIN.length - 1][0] - 190, y: MAIN[MAIN.length - 1][1] - 40, t: ['NIGHT SIDE AHEAD', 'tracks show only in your headlights'] },
+];
+
+// Craters and boulders, scattered with a fixed seed so the map is always the same. They keep clear of roads and tracks.
+let seed = 20261113;
+const rnd = () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+const keep = [...tracks.filter((_, i) => i % 3 === 0).map(p => [p[0], p[1], 100]), [LANDER.x, LANDER.y, 420], [ROVER.x, ROVER.y, 200]];
+const clear = (x, y, r) => keep.every(k => Math.hypot(x - k[0], y - k[1]) > r + k[2]);
+const CRATERS = [], ROCKS = [];
+for (let i = 0; i < 4000 && CRATERS.length < 150; i++) {
+  const r = 60 + rnd() * rnd() * 260, x = r + rnd() * (WW - 2 * r), y = r + rnd() * (WH - 2 * r);
+  if (clear(x, y, r) && CRATERS.every(c => Math.hypot(x - c.x, y - c.y) > r + c.r + 30)) CRATERS.push({ x, y, r, rot: rnd() * 6.28 });
+}
+for (let i = 0; i < 4000 && ROCKS.length < 230; i++) {
+  const r = 16 + rnd() * 30, x = rnd() * WW, y = rnd() * WH;
+  if (clear(x, y, r - 40) && CRATERS.every(c => Math.hypot(x - c.x, y - c.y) > r + c.r)) ROCKS.push({ x, y, r, rot: rnd() * 6.28 });
+}
+// Ground texture: grey dust with speckles, tiled.
+const tile = document.createElement('canvas'); tile.width = tile.height = 512;
+{ const t = tile.getContext('2d'); t.fillStyle = '#5b5d64'; t.fillRect(0, 0, 512, 512);
+  for (let i = 0; i < 2600; i++) { const v = 60 + rnd() * 70 | 0; t.fillStyle = `rgba(${v},${v},${v + 6},${0.25 + rnd() * 0.4})`; const s = 2 + (rnd() * 3 | 0) * 2; t.fillRect((rnd() * 256 | 0) * 2, (rnd() * 256 | 0) * 2, s, s); }
+  for (let i = 0; i < 40; i++) { const x = rnd() * 512, y = rnd() * 512, r = 3 + rnd() * 6;     // tiny pits: dark on the left, lit on the right
+    t.fillStyle = 'rgba(25,26,32,.55)'; t.beginPath(); t.arc(x, y, r, 0, 7); t.fill(); t.fillStyle = 'rgba(150,152,160,.35)'; t.beginPath(); t.arc(x + r * 0.5, y, r * 0.55, -1.2, 1.2); t.fill(); } }
+const ground = ctx.createPattern(tile, 'repeat');
+
+// ---------- game state ----------
+let screen = 'menu', b, o2, hasSample, trail, dust, t0, cam = { x: 0, y: 0 };
+const keys = {};
+function reset() {
+  b = { x: LANDER.x + 250, y: LANDER.y - 120, ang: 1.15, v: 0 };
+  o2 = OXYGEN; hasSample = false; trail = []; dust = []; t0 = performance.now(); cam = { x: b.x, y: b.y };
+}
+reset();
+function show(s) {
+  screen = s;
+  for (const el of document.querySelectorAll('.screen')) el.classList.toggle('on', el.id === s);
+  $('hud').classList.toggle('on', s === 'play');
+}
+document.querySelectorAll('[data-act]').forEach(el => el.onclick = () => {
+  const a = el.dataset.act;
+  if (a === 'home') location.href = '../index.html';
+  else if (a === 'brief') show('brief');
+  else if (a === 'start') { reset(); show('play'); }
+});
+addEventListener('keydown', e => {
+  keys[e.code] = true;
+  if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) e.preventDefault();
+  if (screen === 'play' && (e.code === 'KeyE' || e.code === 'Space' || e.code === 'Enter')) act();
+  else if (screen === 'play' && e.code === 'Escape') show('menu');
+  else if (screen === 'menu' && e.code === 'Enter') show('brief');
+  else if (screen === 'brief' && e.code === 'Enter') { reset(); show('play'); }
+});
+addEventListener('keyup', e => keys[e.code] = false);
+$('prompt').onclick = () => act();
+
+const near = (o, d) => Math.hypot(b.x - o.x, b.y - o.y) < d;
+function act() {                                         // pick up the sample, or board the lander with it
+  if (!hasSample && near(ROVER, 190)) { hasSample = true; b.v = 0; }
+  else if (hasSample && near(LANDER, 330)) finish(true);
+}
+function finish(won) {
+  const secs = Math.round((performance.now() - t0) / 1000), mmss = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+  $('endTitle').textContent = won ? 'Sample on board' : 'Out of oxygen';
+  $('endText').innerHTML = won
+    ? `Hazlaoum seals the sample canister without opening it, loads it into the lander and lifts off for home.<br><br>
+       On Earth, the science team will examine it and find out why the rover broke down. Out here, the job was to bring it back safely, and you did.<br><br>
+       <span class="mono" style="font-size:1.25cqw;color:#8f93b8">Drive time ${mmss(secs)} · oxygen left ${mmss(o2)}</span>`
+    : `The oxygen warning sounds and mission control calls the buggy back to the lander on autopilot.<br><br>
+       Follow the rover's wheel tracks and the blue markers every 200 m: they count down to the rover, and to the lander on the way back.`;
+  $('endAgain').textContent = won ? 'Drive again' : 'Try again';
+  show('end');
+}
+
+// ---------- driving ----------
+function update(dt) {
+  const up = keys.KeyW || keys.ArrowUp, down = keys.KeyS || keys.ArrowDown, left = keys.KeyA || keys.ArrowLeft, right = keys.KeyD || keys.ArrowRight;
+  const inCrater = CRATERS.some(c => Math.hypot(c.x - b.x, c.y - b.y) < c.r * 0.82);
+  const top = 300 * (inCrater ? 0.5 : 1);
+  if (up) b.v += 300 * dt; else if (down) b.v -= 340 * dt; else b.v -= Math.sign(b.v) * Math.min(Math.abs(b.v), 150 * dt);   // low gravity: it rolls on for a while
+  b.v = Math.max(-110, Math.min(top, b.v > top ? b.v - 500 * dt : b.v));
+  const steer = (right ? 1 : 0) - (left ? 1 : 0);
+  b.ang += steer * 2.3 * dt * Math.min(1, Math.abs(b.v) / 90) * Math.sign(b.v || 1);
+  b.x += Math.sin(b.ang) * b.v * dt; b.y -= Math.cos(b.ang) * b.v * dt;
+  for (const r of ROCKS) {                                // boulders stop the buggy
+    const d = Math.hypot(b.x - r.x, b.y - r.y), min = r.r + 30;
+    if (d < min && d > 0) { b.x = r.x + (b.x - r.x) / d * min; b.y = r.y + (b.y - r.y) / d * min; b.v *= 0.4; }
+  }
+  for (const o of [[LANDER, 150], [ROVER, 70]]) {
+    const d = Math.hypot(b.x - o[0].x, b.y - o[0].y), min = o[1] + 30;
+    if (d < min && d > 0) { b.x = o[0].x + (b.x - o[0].x) / d * min; b.y = o[0].y + (b.y - o[0].y) / d * min; b.v *= 0.4; }
+  }
+  b.x = Math.max(60, Math.min(WW - 60, b.x)); b.y = Math.max(60, Math.min(WH - 60, b.y));
+  const last = trail[trail.length - 1];
+  if (!last || Math.hypot(last[0] - b.x, last[1] - b.y) > 18) { trail.push([b.x, b.y, b.ang]); if (trail.length > 900) trail.shift(); }
+  if (Math.abs(b.v) > 70 && Math.random() < 0.5) dust.push({ x: b.x - Math.sin(b.ang) * 40 + (Math.random() - 0.5) * 40, y: b.y + Math.cos(b.ang) * 40 + (Math.random() - 0.5) * 40, a: 0.5, r: 5 });
+  for (const d of dust) { d.a -= dt * 0.5; d.r += dt * 14; } dust = dust.filter(d => d.a > 0);
+  o2 -= dt; if (o2 <= 0) { o2 = 0; finish(false); }
+  cam.x += (b.x + Math.sin(b.ang) * b.v * 0.45 - cam.x) * Math.min(1, dt * 4); cam.y += (b.y - Math.cos(b.ang) * b.v * 0.45 - cam.y) * Math.min(1, dt * 4);
+
+  // heads-up display
+  $('o2t').textContent = `${Math.floor(o2 / 60)}:${String(Math.floor(o2 % 60)).padStart(2, '0')}`;
+  $('o2bar').style.width = `${o2 / OXYGEN * 100}%`; $('o2bar').style.background = o2 < 90 ? '#ff5f6b' : o2 < 200 ? '#ffcf5a' : '#6fe39a';
+  $('sampleT').textContent = hasSample ? 'on board ✓' : 'not found'; $('sampleT').style.color = hasSample ? '#6fe39a' : '#f3efe6';
+  const endD = Math.hypot(b.x - MAIN[MAIN.length - 1][0], b.y - MAIN[MAIN.length - 1][1]), pastEnd = b.x > MAIN[MAIN.length - 1][0] - 200 && b.y < MAIN[MAIN.length - 1][1] + 300;
+  $('goal').innerHTML = hasSample ? 'Bring the sample back to the lander<small>the 200 m markers now count down to the lander</small>'
+    : pastEnd || endD < 500 ? 'Follow the wheel tracks into the night<small>a blue marker every 200 m counts down to the rover</small>'
+    : 'Find the lost rover<small>follow its wheel tracks from the lander</small>';
+  const pr = !hasSample && near(ROVER, 190) ? 'Press E to take the sample' : hasSample && near(LANDER, 330) ? 'Press E to load the sample into the lander' : '';
+  $('prompt').style.display = pr ? 'block' : 'none'; $('prompt').textContent = pr;
+}
+
+// ---------- drawing ----------
+// The Sun is low on the left, so everything casts a long shadow to the right.
+function shadow(x, y, r, len) {
+  const g = ctx.createLinearGradient(x, 0, x + len, 0); g.addColorStop(0, 'rgba(5,5,12,.7)'); g.addColorStop(1, 'rgba(5,5,12,0)');
+  ctx.fillStyle = g; ctx.beginPath(); ctx.moveTo(x, y - r * 0.8); ctx.lineTo(x + len, y - r * 0.5); ctx.lineTo(x + len, y + r * 0.5); ctx.lineTo(x, y + r * 0.8); ctx.fill();
+}
+function sprite(im, x, y, w, ang) {
+  if (!im.width) return; const h = w * im.height / im.width;
+  ctx.save(); ctx.translate(x, y); ctx.rotate(ang); ctx.drawImage(im, -w / 2, -h / 2, w, h); ctx.restore();
+}
+function draw(now) {
+  const ox = Math.round(cam.x - W / 2), oy = Math.round(cam.y - H / 2), vis = (x, y, r) => x > ox - r && x < ox + W + r && y > oy - r && y < oy + H + r;
+  ctx.imageSmoothingEnabled = false;
+  ctx.save(); ctx.translate(-ox, -oy);
+  ctx.fillStyle = ground; ctx.fillRect(ox, oy, W, H);
+  // the lost rover's wheel tracks
+  ctx.fillStyle = 'rgba(38,40,50,.6)';
+  for (let i = 0; i < tracks.length - 1; i++) {
+    const [x, y] = tracks[i]; if (!vis(x, y, 40)) continue;
+    const a = Math.atan2(tracks[i + 1][1] - y, tracks[i + 1][0] - x);
+    for (const s of [-20, 20]) { ctx.save(); ctx.translate(x + Math.cos(a + Math.PI / 2) * s, y + Math.sin(a + Math.PI / 2) * s); ctx.rotate(a); ctx.fillRect(-5, -4, 10, 8); ctx.restore(); }
+  }
+  // the buggy's own tracks
+  ctx.fillStyle = 'rgba(50,52,62,.35)';
+  for (const [x, y, a] of trail) { if (!vis(x, y, 40)) continue; for (const s of [-26, 26]) ctx.fillRect(x + Math.cos(a) * s - 3, y + Math.sin(a) * s - 3, 6, 6); }
+  for (const c of CRATERS) if (vis(c.x, c.y, c.r)) sprite(art.crater, c.x, c.y, c.r * 2, c.rot);
+  for (const r of ROCKS) if (vis(r.x, r.y, r.r * 4)) { shadow(r.x, r.y, r.r, r.r * 3); sprite(art.rock, r.x, r.y, r.r * 2, r.rot); }
+  // signs
+  ctx.textAlign = 'center';
+  for (const s of SIGNS) if (vis(s.x, s.y, 200)) {
+    ctx.font = '15px ui-monospace, Consolas, monospace'; const w = Math.max(...s.t.map(t => ctx.measureText(t).width)) + 26;
+    ctx.fillStyle = '#3a3c48'; ctx.fillRect(s.x - 3, s.y + 20, 6, 30);
+    ctx.fillStyle = '#12142b'; ctx.fillRect(s.x - w / 2, s.y - 28, w, 50); ctx.strokeStyle = '#ffb347'; ctx.lineWidth = 2; ctx.strokeRect(s.x - w / 2, s.y - 28, w, 50);
+    ctx.fillStyle = '#ffcf5a'; ctx.fillText(s.t[0], s.x, s.y - 7); ctx.fillStyle = '#c9c7e4'; ctx.font = '12px ui-monospace, Consolas, monospace'; ctx.fillText(s.t[1], s.x, s.y + 12);
+  }
+  ctx.font = '12px ui-monospace, Consolas, monospace'; ctx.textAlign = 'center';
+  for (const m of MARKS) if (vis(m.x, m.y, 60)) {
+    const dir = hasSample ? m.a + Math.PI : m.a, txt = hasSample ? `LANDER ${m.toLander} m` : `ROVER ${m.toRover} m`;
+    ctx.fillStyle = 'rgba(8,8,14,.5)'; ctx.fillRect(m.x + 2, m.y + 1, 40, 4);
+    ctx.fillStyle = '#2b2d3a'; ctx.fillRect(m.x - 2, m.y - 22, 4, 24);
+    ctx.fillStyle = '#0d1424'; const w = ctx.measureText(txt).width + 30; ctx.fillRect(m.x - w / 2, m.y - 44, w, 20);
+    ctx.strokeStyle = '#7fd4ff'; ctx.lineWidth = 1.5; ctx.strokeRect(m.x - w / 2, m.y - 44, w, 20);
+    ctx.fillStyle = '#7fd4ff'; ctx.fillText(txt, m.x + 7, m.y - 30);
+    ctx.save(); ctx.translate(m.x - w / 2 + 11, m.y - 34); ctx.rotate(dir); ctx.beginPath(); ctx.moveTo(6, 0); ctx.lineTo(-4, -5); ctx.lineTo(-4, 5); ctx.fill(); ctx.restore();
+  }
+  ctx.imageSmoothingEnabled = true;
+  // lander and rover
+  if (vis(LANDER.x, LANDER.y, 700)) { shadow(LANDER.x, LANDER.y, 150, 520); sprite(art.lander, LANDER.x, LANDER.y, 420, 0); }
+  if (vis(ROVER.x, ROVER.y, 200)) {
+    shadow(ROVER.x, ROVER.y, 60, 200);
+    sprite(art.rover, ROVER.x, ROVER.y, 170, ROVER.ang);
+    if (!hasSample) { const k = 0.5 + 0.5 * Math.sin(now / 250); ctx.globalAlpha = 0.5 + 0.5 * k; ctx.fillStyle = '#7fd4ff'; ctx.beginPath(); ctx.arc(ROVER.x - 70, ROVER.y + 6, 7, 0, 7); ctx.fill(); ctx.globalAlpha = 1; }
+  }
+  // dust and the buggy
+  for (const d of dust) { ctx.globalAlpha = d.a; ctx.fillStyle = '#c4c5cc'; ctx.beginPath(); ctx.arc(d.x, d.y, d.r, 0, 7); ctx.fill(); } ctx.globalAlpha = 1;
+  shadow(b.x, b.y, 38, 120);
+  ctx.imageSmoothingEnabled = false; sprite(art.buggy, b.x, b.y, 76, b.ang); ctx.imageSmoothingEnabled = true;   // chunky pixel art: no smoothing
+  if (hasSample) { ctx.fillStyle = '#7fd4ff'; ctx.shadowColor = '#7fd4ff'; ctx.shadowBlur = 12; ctx.save(); ctx.translate(b.x, b.y); ctx.rotate(b.ang); ctx.fillRect(-6, 26, 12, 12); ctx.restore(); ctx.shadowBlur = 0; }
+  ctx.restore();
+
+  drawNight(ox, oy, now);
+  // Earth hanging low over the horizon, glowing at the edge of the view
+  { const ex = W - 74, ey = 150, er = 40, g = ctx.createRadialGradient(ex, ey, er * 0.8, ex, ey, er * 2.2);
+    g.addColorStop(0, 'rgba(120,180,255,.35)'); g.addColorStop(1, 'rgba(120,180,255,0)'); ctx.fillStyle = g; ctx.beginPath(); ctx.arc(ex, ey, er * 2.2, 0, 7); ctx.fill();
+    ctx.save(); ctx.beginPath(); ctx.arc(ex, ey, er, 0, 7); ctx.clip(); ctx.fillStyle = '#1f4fa8'; ctx.fillRect(ex - er, ey - er, er * 2, er * 2);
+    ctx.fillStyle = '#3f9a55'; for (const [a, c, r] of [[-12, -8, 16], [10, 14, 12], [18, -18, 9]]) { ctx.beginPath(); ctx.arc(ex + a, ey + c, r, 0, 7); ctx.fill(); }
+    ctx.fillStyle = 'rgba(255,255,255,.7)'; ctx.fillRect(ex - er, ey - 4, er * 2, 4); ctx.fillRect(ex - 20, ey + 22, 34, 3);
+    ctx.fillStyle = 'rgba(0,0,10,.75)'; ctx.beginPath(); ctx.arc(ex + er * 0.55, ey, er, 0, 7); ctx.fill(); ctx.restore(); }
+  // sunlight vignette
+  const g = ctx.createRadialGradient(W / 2, H / 2, 260, W / 2, H / 2, 760); g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, 'rgba(0,0,10,.45)'); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+}
+
+// The lunar night: everything east of NIGHT_X is dark except what the buggy's headlights, the lamps and the beacons light.
+const dark = document.createElement('canvas'); dark.width = W; dark.height = H; const dk = dark.getContext('2d');
+function hole(x, y, r, k = 1) { const g = dk.createRadialGradient(x, y, r * 0.2, x, y, r); g.addColorStop(0, `rgba(0,0,0,${k})`); g.addColorStop(1, 'rgba(0,0,0,0)'); dk.fillStyle = g; dk.beginPath(); dk.arc(x, y, r, 0, 7); dk.fill(); }
+function drawNight(ox, oy, now) {
+  const tx = NIGHT_X - ox; if (tx > W + 700) return;
+  dk.globalCompositeOperation = 'source-over'; dk.clearRect(0, 0, W, H);
+  const g = dk.createLinearGradient(tx - 700, 0, tx + 200, 0); g.addColorStop(0, 'rgba(2,3,10,0)'); g.addColorStop(1, 'rgba(2,3,10,.96)');
+  dk.fillStyle = g; dk.fillRect(0, 0, W, H);
+  dk.globalCompositeOperation = 'destination-out';
+  const bx = b.x - ox, by = b.y - oy, fa = b.ang - Math.PI / 2, L = 470;
+  const cone = dk.createRadialGradient(bx, by, 30, bx, by, L); cone.addColorStop(0, 'rgba(0,0,0,1)'); cone.addColorStop(0.65, 'rgba(0,0,0,.85)'); cone.addColorStop(1, 'rgba(0,0,0,0)');
+  dk.fillStyle = cone; dk.beginPath(); dk.moveTo(bx, by); dk.arc(bx, by, L, fa - 0.42, fa + 0.42); dk.closePath(); dk.fill();
+  hole(bx, by, 110);
+  for (const m of MARKS) if (m.x - ox > -60 && m.x - ox < W + 60 && m.y - oy > -60 && m.y - oy < H + 60) hole(m.x - ox, m.y - 34 - oy, 62, 0.95);
+  if (!hasSample) hole(ROVER.x - 70 - ox, ROVER.y + 6 - oy, 60 + 20 * Math.sin(now / 250), 0.9);
+  ctx.drawImage(dark, 0, 0);
+  ctx.globalCompositeOperation = 'lighter';                // a faint warm tint in the headlight beam
+  const tint = ctx.createRadialGradient(bx, by, 30, bx, by, L); tint.addColorStop(0, 'rgba(255,240,190,.10)'); tint.addColorStop(1, 'rgba(255,240,190,0)');
+  ctx.fillStyle = tint; ctx.beginPath(); ctx.moveTo(bx, by); ctx.arc(bx, by, L, fa - 0.42, fa + 0.42); ctx.closePath(); ctx.fill();
+  ctx.globalCompositeOperation = 'source-over';
+}
+
+let last = performance.now();
+function loop(now) {
+  const dt = Math.max(0, Math.min(0.05, (now - last) / 1000)); last = now;
+  if (screen === 'play') update(dt);
+  else if (screen === 'menu') { cam.x = LANDER.x + 200 + Math.sin(now / 5000) * 200; cam.y = LANDER.y - 120; }
+  draw(now);
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>

@@ -15,7 +15,7 @@
   .disc { position:absolute; left:50%; top:42%; width:42cqw; aspect-ratio:1; transform:translate(-50%,-50%); border-radius:50%; background:#11121c; z-index:-1; }
   .title { font-size:6.4cqw; color:#f3efe6; letter-spacing:.1cqw; }
   .tagline { font-size:2.3cqw; letter-spacing:.35cqw; color:#b9b6d6; }
-  .orn { width:42cqw; height:1px; background:#8a88a8; margin:2.4cqw 0 4cqw; position:relative; }
+  .orn { width:42cqw; height:1px; background:#8a88a8; margin:2cqw 0 2.6cqw; position:relative; }
   .orn i { position:absolute; left:50%; top:50%; width:1.2cqw; height:1.2cqw; transform:translate(-50%,-50%) rotate(45deg);
     border:1px solid #d8d6ee; background:#11121c; outline:.8cqw solid #11121c; }
   .item { font-size:2.9cqw; margin:.6cqw 0; padding:.2cqw 4cqw; position:relative; cursor:pointer; white-space:nowrap; }
@@ -27,7 +27,7 @@
   h2 { font-weight:normal; font-size:4cqw; color:#f3efe6; margin:0 0 1cqw; }
   .how { width:60%; text-align:left; font-size:1.6cqw; line-height:1.5; color:#c9c7e4; }
   .how b { color:#f3efe6; font-weight:normal; }
-  .how li { margin-bottom:1cqw; }
+  .how li { margin-bottom:.7cqw; }
   .foot { position:absolute; bottom:4%; left:0; right:0; font:1.4cqw ui-monospace, Consolas, monospace; color:#5f6386; }
   #fade { position:absolute; inset:0; background:#000; opacity:0; pointer-events:none; transition:opacity .4s; }
 </style>
@@ -43,6 +43,7 @@
     <div class="orn"><i></i></div>
     <div class="item sel" data-go="rocket/index.html">Start the mission<small>chapter 1 · design and launch your rocket</small></div>
     <div class="item" data-go="hazlaoum/index.html">Float in orbit<small>chapter 2 · explore the spacecraft in zero gravity</small></div>
+    <div class="item" data-go="moon/index.html">Moon rescue<small>chapter 3 · drive the buggy and bring back the rover's sample</small></div>
     <div class="item" data-act="how">How to play</div>
     <div class="foot">↑ ↓ select · Enter confirm · NASA Space Apps 2026</div>
   </div>
@@ -53,6 +54,7 @@
     <ol class="how">
       <li><b>Chapter 1: the rocket workshop.</b> Pick a mission, then build a rocket from the nose down. Every part costs money, adds mass and uses or makes electricity. Watch the gauges and press Launch. The mission report tells you which step failed, and why.</li>
       <li><b>Chapter 2: adrift in orbit.</b> Once your mission succeeds, board the spacecraft. Push off with WASD or the arrow keys and float through the hatches. Press M for the ship map.</li>
+      <li><b>Chapter 3: moon rescue.</b> Drive the buggy along the marked road, follow the lost rover's wheel tracks, and bring its sample back to the lander before the oxygen runs low.</li>
       <li>New to rockets? Start with the <b>Tutorial</b> in the workshop.</li>
     </ol>
     <div class="item sel" data-act="back">Back</div>

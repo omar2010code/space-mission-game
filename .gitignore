@@ -5,6 +5,10 @@
 !/index.html
 !/hazlaoum/
 !/rocket/
+!/moon/
 
 # Raw generated images before cutting: not needed to play.
 /rocket/raw/
+/moon/raw/
+/moon/raw2/
+/moon/raw3/

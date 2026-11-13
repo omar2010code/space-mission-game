@@ -21,6 +21,8 @@ A 2D browser game made for the NASA Space Apps 2026 challenge *Space Mission Des
   - **Concept Maturity Levels** (from JPL's CML framework): your design climbs from CML 1 (an idea) to CML 4 (a point design).
     Finishing a mission unlocks the next one.
 - **Chapter 2, float in orbit** (`hazlaoum/`): explore the six rooms of the spacecraft in zero gravity. Press M for the ship map.
+- **Chapter 3, moon rescue** (`moon/`): drive a buggy across the Moon. Follow the marked road and then the lost rover's wheel tracks,
+  take the sample it collected and bring it back to the lander. The oxygen timer is generous.
 
 ## Run it on your own computer
 
