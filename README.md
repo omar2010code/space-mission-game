@@ -6,8 +6,10 @@ A 2D browser game made for the NASA Space Apps 2026 challenge *Space Mission Des
 
 ## What is in it
 
-- **Chapter 1, the rocket workshop** (`rocket/`): pick a mission and a science goal, build a rocket by dragging parts, and launch it.
-  Parts snap above, below or between each other; side boosters, solar panels, antennas and instruments snap onto the sides,
+- **Chapter 1, the rocket workshop** (`rocket/`): pick a mission (Orbit and home, then Moon landing) and a science goal, build a rocket by dragging parts, and launch it.
+  The spacecraft is three rooms: the Control room, the Communication room and Life support & shelter. When the design is complete (CML 4)
+  it takes a streamlined, shuttle-style launch shape: the rooms become a winged spacecraft on one big fuel tank with boosters on its sides.
+  Parts snap above, below or between each other; side boosters, solar panels and instruments snap onto the sides,
   with a mirror switch for pairs, and fuel tanks can be stretched. Every part costs money, adds mass and uses or makes electricity.
   The mission report says which step failed and why. New players can start with the Tutorial. Ideas from the challenge's NASA resources are built into the game:
   - **Science goal first** (from *A Learning Game About Telescopes*): the question you choose decides which instruments
