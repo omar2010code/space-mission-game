@@ -33,6 +33,13 @@ Object.assign(MP, {
 // each message, so it does not matter which relay a message came through. Duplicates are dropped.
 const PID = Math.random().toString(36).slice(2, 10);
 const STRATS = LOCAL ? ['local'] : ['nostr', 'torrent', 'mqtt'];
+// TURN relay: when two players' networks cannot connect directly (different Wi-Fi, mobile data), the game data goes
+// through this relay instead (a free ExpressTURN account).
+const TURN = [{
+  urls: ['turn:free.expressturn.com:3478', 'turn:free.expressturn.com:3478?transport=tcp'],
+  username: '000000002110049658',
+  credential: '1V/JY/m+rHfxxcxuf9nwEKdhf/A=',
+}];
 const mods = {};                                       // the loaded relay libraries, by name
 async function loadStrats() {
   if (LOCAL) return ['local'];
@@ -44,7 +51,7 @@ async function loadStrats() {
 }
 function subRoom(st, id) {                             // one room on one kind of relay: send(type, msg), on(type, f(msg, peer))
   if (st === 'local') return localRoom(id);
-  const r = mods[st].joinRoom({ appId: APP }, id), acts = {}, handlers = {}, joinF = [], leaveF = [];
+  const r = mods[st].joinRoom(TURN.length ? { appId: APP, turnConfig: TURN } : { appId: APP }, id), acts = {}, handlers = {}, joinF = [], leaveF = [];
   const act = type => acts[type] || (acts[type] = (() => { const [send, get] = r.makeAction(type); get((d, p) => (handlers[type] || []).forEach(f => f(d, p))); return send; })());
   r.onPeerJoin(p => joinF.forEach(f => f(p))); r.onPeerLeave(p => leaveF.forEach(f => f(p)));
   return { send: (type, msg) => { try { act(type)(msg); } catch (e) {} }, on: (type, f) => { act(type); (handlers[type] = handlers[type] || []).push(f); },
@@ -393,4 +400,4 @@ $$('mpMode-mats').onclick = () => pickMode('mats');
 $$('mpAgain').onclick = () => { if (MP.playing) { showMp('play'); $$('mpBoard').style.display = 'block'; } else showRoom(); };   // a new round may already be running
 $$('mpQuit').onclick = () => { leaveRoom(); enterLobby(); };
 MP.leave = () => { leaveRoom(); $$('mpBoard').style.display = 'none'; enterLobby(); };
-enterLobby();
+if (MP.on) enterLobby();                                // only with ?mp: the single-player Moon mission keeps its own screens
