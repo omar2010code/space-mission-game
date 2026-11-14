@@ -112,27 +112,26 @@ async function enterLobby() {
   if (!LOCAL) setInterval(checkRelays, 15000);
   setInterval(() => { let gone = false; for (const [k, a] of MP.ads) if (Date.now() - a.seen > 7000) { MP.ads.delete(k); gone = true; } if (gone) renderAds(); }, 2000);
 }
-// Can this browser make direct player-to-player connections (WebRTC) at all? Some browsers and settings block them,
-// for example Brave with strict privacy settings. Test it once by connecting two connections inside this page.
+// Can this browser make direct player-to-player connections (WebRTC)? Some browsers and settings block them, for
+// example Brave with strict privacy settings. A browser that allows them gets a public address from a STUN server
+// (a "srflx" candidate); one that blocks them gets none. Connecting two tabs on the same computer is not a fair test:
+// many home routers cannot connect a computer back to itself, even though players on other networks connect fine.
 let rtcOk = null;
 (async () => {
   if (LOCAL) { rtcOk = true; return; }
   try {
-    const a = new RTCPeerConnection(), c = new RTCPeerConnection();
-    a.onicecandidate = e => e.candidate && c.addIceCandidate(e.candidate).catch(() => {});
-    c.onicecandidate = e => e.candidate && a.addIceCandidate(e.candidate).catch(() => {});
-    a.createDataChannel('test');
-    await a.setLocalDescription(await a.createOffer()); await c.setRemoteDescription(a.localDescription);
-    await c.setLocalDescription(await c.createAnswer()); await a.setRemoteDescription(c.localDescription);
-    for (let i = 0; i < 40 && a.connectionState !== 'connected'; i++) await new Promise(r => setTimeout(r, 100));
-    rtcOk = a.connectionState === 'connected'; a.close(); c.close();
+    const pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun.cloudflare.com:3478' }] });
+    let pub = false; pc.onicecandidate = e => { if (e.candidate && / typ srflx /.test(e.candidate.candidate)) pub = true; };
+    pc.createDataChannel('test'); await pc.setLocalDescription(await pc.createOffer());
+    for (let i = 0; i < 50 && !pub && pc.iceGatheringState !== 'complete'; i++) await new Promise(r => setTimeout(r, 100));
+    rtcOk = pub; pc.close();
   } catch (e) { rtcOk = false; }
 })();
 function checkRelays() {                              // say which kinds of relay this network can reach
   const up = Object.entries(mods).filter(([, md]) => { try { return Object.values(md.getRelaySockets ? md.getRelaySockets() : {}).some(ws => ws && ws.readyState === 1); } catch (e) { return false; } }).map(([k]) => k);
   if (rtcOk === false) lobbyStatus('This browser is blocking direct connections between players (WebRTC), so multiplayer cannot work here. In Brave: turn Shields off for this site and set Settings → Privacy → WebRTC IP handling policy to "Default". Or play in Chrome or Edge.', true);
   else if (!up.length) lobbyStatus("Can't reach any multiplayer relay from this network. Try another network (a phone hotspot often works), or turn off blockers such as Brave Shields for this site.", true);
-  else lobbyStatus(`Connected through ${up.length} of 3 relay networks. Servers appear here as players create them.`);
+  else lobbyStatus(`Connected through ${up.length} of 3 relay networks. Servers appear here as players create them. To test, use two different devices: two tabs on one computer often cannot connect to each other.`);
 }
 function renderAds() {
   const list = [...MP.ads.values()].sort((a, b) => a.num - b.num);
