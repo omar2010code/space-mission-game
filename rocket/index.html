@@ -99,6 +99,17 @@
   .dot { flex:0 0 1.2cqw; height:1.2cqw; border-radius:50%; margin-top:.3cqw; }
   .dot.green { background:#6fe39a; } .dot.yellow { background:#ffcf5a; } .dot.red { background:#ff5f6b; }
   .grade { margin-left:auto; font-size:.9cqw; text-transform:uppercase; letter-spacing:.1cqw; }
+  #card { position:absolute; inset:0; display:none; flex-direction:column; align-items:center; justify-content:center; text-align:center; cursor:pointer; z-index:5;
+    background-color:#000; background-image:radial-gradient(1.5px 1.5px at 12% 22%, #fff9 50%, transparent 51%),
+    radial-gradient(1.5px 1.5px at 31% 71%, #fff7 50%, transparent 51%), radial-gradient(1.5px 1.5px at 58% 14%, #fff8 50%, transparent 51%), radial-gradient(1.5px 1.5px at 77% 62%, #fff6 50%, transparent 51%),
+    radial-gradient(1.5px 1.5px at 90% 30%, #fff9 50%, transparent 51%), radial-gradient(1.5px 1.5px at 44% 88%, #fff6 50%, transparent 51%), radial-gradient(1.5px 1.5px at 6% 80%, #fff7 50%, transparent 51%),
+    radial-gradient(1.5px 1.5px at 68% 90%, #fff5 50%, transparent 51%), radial-gradient(1.5px 1.5px at 23% 45%, #fff5 50%, transparent 51%), radial-gradient(1.5px 1.5px at 84% 8%, #fff7 50%, transparent 51%); }
+  #card.on { display:flex; }
+  #card h1 { font:4.6cqw Georgia, serif; margin:0; font-weight:normal; letter-spacing:.2cqw; animation:cardIn 1.4s ease both; }
+  #card ul { list-style:none; padding:0; margin:2cqw 0 0; width:64%; text-align:left; animation:cardIn 1.4s .5s ease both; }
+  #card li { color:#ff9aa2; font-size:1.15cqw; margin-bottom:.6cqw; } #card li b { color:#ffdede; font-weight:normal; }
+  #card small { color:#5f6386; font-size:1.1cqw; margin-top:2cqw; animation:cardIn 1s 1.2s ease both; }
+  @keyframes cardIn { from { opacity:0; } to { opacity:1; } }
   .how { width:66%; text-align:left; font-size:1.2cqw; color:#c9c7e4; }
   .how li { margin-bottom:.45cqw; }
 </style>
@@ -157,6 +168,7 @@
   <div class="screen" id="review"><div class="rbox" id="reviewBox"></div></div>
 
   <div class="screen" id="report"><div class="box" id="reportBox"></div></div>
+  <div id="card"></div>
 </div>
 
 <script>
@@ -719,11 +731,12 @@ function refresh() {
     <br><div class="head" style="font-size:1.3cqw">Mission steps</div>
     ${m.steps.map(s => `<span class="dim">• ${s.n}${s.dv ? ` — ${fmt(s.dv + a.drag, 0)} m/s` : ''}</span>`).join('')}
     <br><div class="btn go ${design.core.length ? '' : 'off'}" id="launch">Launch ▲</div><div class="btn" id="back">Missions</div>`;
-  $('launch').onclick = openReview; $('back').onclick = () => go('missions');
+  $('launch').onclick = STORY ? storyTest : openReview; $('back').onclick = () => STORY ? location.href = '../index.html' : go('missions');
+  if (STORY) { $('back').textContent = 'Main menu'; $('launch').textContent = 'Test and launch ▲'; }
   const fresh = flashMsg && performance.now() - flashT < 4000;
   $('tipText').textContent = fresh ? flashMsg : tut === null ? tip()
     : tut < TUT.length ? `Step ${tut + 1} of ${TUT.length + 1}: ${TUT[tut][1]}`
-    : `Step ${TUT.length + 1} of ${TUT.length + 1}: CML ${lvl}! The design is complete, so it took its streamlined launch shape: the three rooms form the winged spacecraft, the fuel tanks become one big tank and the boosters sit on its sides. The Mission Design Lab approves it, so press the glowing Launch button.`;
+    : `Step ${TUT.length + 1} of ${TUT.length + 1}: CML ${lvl}! The design is complete, so it took its streamlined launch shape: the three rooms form the winged spacecraft, the fuel tanks become one big tank and the boosters sit on its sides. The Mission Design Lab approves it, so press the glowing ${STORY ? 'Test and launch' : 'Launch'} button.`;
   $('tutSkip').style.display = tut === null ? 'none' : '';
   if (lvl === 4 && lastLvl !== 4) { shape = true; shapeT = performance.now(); selected = null; }
   if (lvl < 4) shape = false;
@@ -792,6 +805,22 @@ function renderCards() {
   });
 }
 renderCards();
+
+// ---------- story mode ----------
+// Opened from the story (?story=1): the guided tutorial build. Launch runs the test: a black card says
+// TEST FAILED in red, with what is missing, or TEST PASSED THE REQUIREMENTS, and then the launch cutscene plays.
+const STORY = new URLSearchParams(location.search).has('story');
+function storyTest() {
+  if (!design.core.length) return;
+  const reds = review(design, mission).filter(r => r.grade === 'red'), c = $('card');
+  c.innerHTML = reds.length
+    ? `<h1 style="color:#ff3c46">TEST FAILED</h1><ul>${reds.map(r => `<li><b>${r.name}:</b> ${r.note}</li>`).join('')}</ul><small>click to go back to the workshop</small>`
+    : `<h1 style="color:#6fe39a">TEST PASSED THE REQUIREMENTS</h1><small>click to launch</small>`;
+  c.classList.add('on');
+  const leave = () => { if (reds.length) c.classList.remove('on'); else { try { localStorage.setItem('hazlaoum.story', 'launch'); } catch (e) {} location.href = '../story/index.html?s=launch'; } };
+  c.onclick = leave; if (!reds.length) setTimeout(leave, 4000);
+}
+addEventListener('keydown', e => { if ($('card').classList.contains('on') && (e.code === 'Enter' || e.code === 'Escape' || e.code === 'Space')) $('card').onclick(); });
 
 // ---------- Mission Design Lab review screen ----------
 function openReview() {
@@ -987,6 +1016,7 @@ function loop(now) {
   requestAnimationFrame(loop);
 }
 requestAnimationFrame(loop);
+if (STORY) startTutorial();                             // the story's build is the guided one: the same steps as the tutorial
 </script>
 </body>
 </html>

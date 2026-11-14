@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hazlaoum — the mission</title>
+<style>
+  html, body { margin:0; height:100%; background:#000; overflow:hidden; }
+  body { display:flex; align-items:center; justify-content:center; }
+  #stage { position:relative; width:min(100vw, calc(100vh * 16 / 9)); aspect-ratio:16 / 9; background:#000; overflow:hidden; user-select:none; cursor:pointer; }
+  canvas { position:absolute; inset:0; width:100%; height:100%; }
+</style>
+</head>
+<body>
+<div id="stage"><canvas id="cv" width="1280" height="720"></canvas></div>
+<script>
+// The story's cutscenes. ?s=intro (default): the call, then "Engineering Time", then the rocket workshop.
+// ?s=launch: lift-off, leaving the atmosphere, the ground station's calls, then inside the ship for the solar flare.
+const W = 1280, H = 720, cv = document.getElementById('cv'), ctx = cv.getContext('2d');
+const img = n => Object.assign(new Image(), { src: `assets/${n}.png` });
+const art = { pad: img('bg_pad'), edge: img('bg_edge'), orbiter: img('orbiter'), tank: img('bigtank'), booster: img('booster') };
+const params = new URLSearchParams(location.search), saved = (() => { try { return localStorage.getItem('hazlaoum.story'); } catch (e) { return null; } })();
+const remember = v => { try { localStorage.setItem('hazlaoum.story', v); } catch (e) {} };
+const stars = Array.from({ length: 170 }, (_, i) => [(i * 197.3) % W, (i * 89.7 + i * i * 3.1) % H, 0.25 + (i % 7) / 9, 1 + (i % 3 === 0)]);
+const clamp = (v, a = 0, b = 1) => Math.max(a, Math.min(b, v)), ease = t => t * t * (3 - 2 * t);
+
+// ---------- sound (made in code, no files) ----------
+let ac, master, rumbleGain;
+function audio() {
+  if (ac) { if (ac.state === 'suspended') ac.resume(); return ac; }
+  try { ac = new AudioContext(); master = ac.createGain(); master.gain.value = 0.5; master.connect(ac.destination); } catch (e) { ac = null; }
+  return ac;
+}
+function beep(freq, len, vol, type = 'square', when = 0) {
+  if (!audio()) return;
+  const o = ac.createOscillator(), g = ac.createGain(), t = ac.currentTime + when;
+  o.type = type; o.frequency.value = freq; g.gain.setValueAtTime(vol, t); g.gain.setValueAtTime(vol, t + len * 0.8); g.gain.linearRampToValueAtTime(0, t + len);
+  o.connect(g).connect(master); o.start(t); o.stop(t + len);
+}
+function rumble(vol) {                                  // engine roar: looping filtered noise
+  if (!audio()) return;
+  if (!rumbleGain) {
+    const n = ac.sampleRate * 2, buf = ac.createBuffer(1, n, ac.sampleRate), d = buf.getChannelData(0);
+    for (let i = 0; i < n; i++) d[i] = Math.random() * 2 - 1;
+    const src = ac.createBufferSource(), lp = ac.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 220;
+    rumbleGain = ac.createGain(); rumbleGain.gain.value = 0; src.buffer = buf; src.loop = true; src.connect(lp).connect(rumbleGain).connect(master); src.start();
+  }
+  rumbleGain.gain.setTargetAtTime(vol, ac.currentTime, 0.3);
+}
+const radioBeep = () => { beep(1200, 0.07, 0.08, 'sine'); beep(900, 0.07, 0.08, 'sine', 0.09); };
+
+// ---------- drawing helpers ----------
+function space(drift = 0) {
+  ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H); ctx.fillStyle = '#fff';
+  for (const [x, y, a, s] of stars) { ctx.globalAlpha = a; ctx.fillRect(x, (y + drift) % H, s, s); } ctx.globalAlpha = 1;
+}
+function text(lines, col, alpha, size = 40) {
+  ctx.globalAlpha = clamp(alpha); ctx.textAlign = 'center'; ctx.fillStyle = col; ctx.font = `${size}px Georgia, "Times New Roman", serif`;
+  lines.forEach((l, i) => ctx.fillText(l, W / 2, H / 2 + 12 - (lines.length - 1) * size * 0.65 + i * size * 1.3)); ctx.globalAlpha = 1;
+}
+function hint(t) { ctx.textAlign = 'center'; ctx.fillStyle = '#5f6386'; ctx.font = '15px ui-monospace, Consolas, monospace'; ctx.fillText(t, W / 2, H - 46); }
+function box(y, col, who, lines, bg = '#0b0c16ee') {
+  const w = 760, h = 50 + lines.length * 30, x = (W - w) / 2;
+  ctx.fillStyle = bg; ctx.fillRect(x, y, w, h); ctx.strokeStyle = col; ctx.lineWidth = 2; ctx.strokeRect(x, y, w, h);
+  ctx.textAlign = 'left'; ctx.fillStyle = col; ctx.font = 'bold 15px ui-monospace, Consolas, monospace'; ctx.fillText(who, x + 18, y + 26);
+  ctx.fillStyle = '#f3efe6'; ctx.font = '24px Georgia, serif'; lines.forEach((l, i) => ctx.fillText(l, x + 18, y + 60 + i * 30));
+}
+function flameAt(x, y, w, k) {
+  const f = (30 + Math.random() * 18) * k;
+  ctx.fillStyle = '#ff9a2e'; ctx.beginPath(); ctx.moveTo(x - w / 2, y); ctx.lineTo(x + w / 2, y); ctx.lineTo(x, y + f * 2.4); ctx.fill();
+  ctx.fillStyle = '#fff3b0'; ctx.beginPath(); ctx.moveTo(x - w / 4, y); ctx.lineTo(x + w / 4, y); ctx.lineTo(x, y + f * 1.2); ctx.fill();
+}
+// The shuttle-style stack with the bottom of the big tank at (cx, bottom), Ht tall.
+function stack(cx, bottom, Ht, o) {
+  const Wt = Ht * 0.26, Ho = Ht * 0.72, Wo = Ho * 259 / 360, Hb = Ht * 0.88, Wb = Hb * 83 / 360, bx = Wo * 0.36, oB = o.tank ? bottom - Ht * 0.07 : bottom;
+  ctx.imageSmoothingEnabled = true;
+  if (o.boosters) for (const dir of [-1, 1]) { if (o.flame) flameAt(cx + dir * bx, bottom, Wb * 0.7, Ht / 260); ctx.drawImage(art.booster, cx + dir * bx - Wb / 2, bottom + 4 - Hb, Wb, Hb); }
+  if (o.tank) ctx.drawImage(art.tank, cx - Wt / 2, bottom - Ht, Wt, Ht);
+  if (o.flame) for (const f of [-0.12, 0, 0.12]) flameAt(cx + f * Wo, oB - 2, Wo * 0.1, Ht / 330);
+  ctx.drawImage(art.orbiter, cx - Wo / 2, oB - Ho, Wo, Ho);
+  return { Wt, Ht, Hb, Wb, bx };
+}
+
+// ---------- scenes ----------
+let scene = params.get('s') || (saved ? 'resume' : 'intro'), t = 0, sel = 0, flags = {}, leaving = null;
+function goTo(url) { if (leaving) return; leaving = { url, t: 0 }; }
+function once(name, fn) { if (!flags[name]) { flags[name] = 1; fn(); } }
+
+const CALL = 'Mr. Hazalqoum, you have been called for a mission of high importance.';
+function intro() {                                      // the call, typed out letter by letter; then "Engineering Time"
+  space(t * 4);
+  const typed = Math.floor(t * 22), done = typed >= CALL.length, t2 = t - (CALL.length / 22 + 2.6);
+  if (t2 < 0) {
+    const shown = CALL.slice(0, typed), cut = shown.lastIndexOf(' ', 38), lines = shown.length > 38 && cut > 0 ? [shown.slice(0, cut), shown.slice(cut + 1)] : [shown];
+    if (!done && typed !== flags.typed) { flags.typed = typed; if (CALL[typed] !== ' ') beep(520 + (typed % 3) * 40, 0.03, 0.04, 'square'); }
+    text(lines, '#f3efe6', done ? -t2 / 0.8 : 1);
+    if (done && t2 < -1) hint('click or press Enter');
+  } else {
+    const a = t2 < 1.2 ? t2 / 1.2 : t2 > 3 ? 1 - (t2 - 3) / 1 : 1;       // fade in, hold, fade out
+    text(['Engineering Time'], '#f3efe6', a, 56);
+    if (t2 > 4.2) { remember('workshop'); goTo('../rocket/index.html?story=1'); }
+  }
+}
+function introSkip() { const end = CALL.length / 22 + 2.6; if (t < CALL.length / 22) t = CALL.length / 22; else if (t < end) t = end; }
+
+const RESUME = { workshop: ['Engineering Time', '../rocket/index.html?story=1'], launch: ['The launch', '?s=launch'], flare: ['The solar flare', '../hazlaoum/index.html?story=flare'] };
+function resume() {                                     // a saved story: continue or start again
+  space(t * 4);
+  const r = RESUME[saved] || RESUME.workshop, items = [`Continue: ${r[0]}`, 'New game', 'Main menu'];
+  ctx.textAlign = 'center'; ctx.fillStyle = '#f3efe6'; ctx.font = '54px Georgia, serif'; ctx.fillText('The mission', W / 2, 250);
+  items.forEach((it, i) => { ctx.fillStyle = i === sel ? '#fff' : '#8f93b8'; ctx.font = '34px Georgia, serif'; ctx.fillText((i === sel ? '◆  ' : '') + it + (i === sel ? '  ◆' : ''), W / 2, 360 + i * 60); });
+  hint('↑ ↓ select · Enter confirm');
+}
+function resumePick() {
+  const r = RESUME[saved] || RESUME.workshop;
+  if (sel === 0) { if (r[1] === '?s=launch') { scene = 'launch'; t = 0; flags = {}; } else goTo(r[1]); }
+  else if (sel === 1) { scene = 'intro'; t = 0; flags = {}; }
+  else goTo('../index.html');
+}
+
+// The launch. Times in seconds: count-down 0-3, lift-off 3-8, climb through the sky 8-15, edge of space 15-.
+const T_LIFT = 3, T_SKY = 8, T_EDGE = 15, T_LEFT = 22, T_CALL = T_LEFT + 8, T_IN = T_CALL + 9;
+function launch() {
+  once('save', () => remember('launch'));
+  let shake = 0;
+  if (t < T_SKY) {                                      // on the pad, then rising off it
+    const k = clamp((t - T_LIFT) / (T_SKY - T_LIFT)), rise = k * k * 900;
+    ctx.fillStyle = '#58b4f0'; ctx.fillRect(0, 0, W, H); if (art.pad.width) ctx.drawImage(art.pad, 0, rise, W, H);
+    shake = t > T_LIFT - 0.4 ? 4 : 0;
+    ctx.save(); ctx.translate((Math.random() - 0.5) * shake, (Math.random() - 0.5) * shake);
+    stack(640, 620 - rise * 0.35, 430, { tank: 1, boosters: 1, flame: t > T_LIFT - 0.4 });
+    if (t > T_LIFT - 0.4) for (let i = 0; i < 14; i++) { ctx.globalAlpha = 0.5; ctx.fillStyle = '#f3efe6'; ctx.beginPath(); ctx.arc(640 + (Math.random() - 0.5) * (200 + k * 500), 640 + rise + Math.random() * 40, 30 + Math.random() * 50, 0, 7); ctx.fill(); }
+    ctx.globalAlpha = 1; ctx.restore();
+    if (t < T_LIFT) { const n = 3 - Math.floor(t); text([String(n)], '#fff', 1 - (t % 1) * 0.6, 120); once('c' + n, () => beep(440, 0.15, 0.1, 'sine')); }
+    else once('go', () => { beep(880, 0.4, 0.1, 'sine'); rumble(0.5); });
+  } else if (t < T_EDGE) {                              // the sky darkens from blue to black as the air thins
+    const k = clamp((t - T_SKY) / (T_EDGE - T_SKY)), g = ctx.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0, `rgb(${Math.round(88 * (1 - k))},${Math.round(180 * (1 - k))},${Math.round(240 * (1 - k) + 8 * k)})`);
+    g.addColorStop(1, `rgb(${Math.round(157 * (1 - k))},${Math.round(223 * (1 - k) + 20 * k)},${Math.round(249 * (1 - k) + 50 * k)})`);
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = '#fff'; for (const [x, y, a, s] of stars) { ctx.globalAlpha = a * k * k; ctx.fillRect(x, (y + t * 90) % H, s, s); }
+    for (let i = 0; i < 7; i++) { ctx.globalAlpha = 0.5 * (1 - k); ctx.fillStyle = '#fff'; const y = ((i * 173 + t * 900) % (H + 200)) - 100; ctx.beginPath(); ctx.ellipse((i * 331) % W, y, 150, 26, 0, 0, 7); ctx.fill(); }
+    ctx.globalAlpha = 1;
+    const sep = t - 12;                                 // boosters burn out and fall away
+    ctx.save(); ctx.translate((Math.random() - 0.5) * 3, (Math.random() - 0.5) * 3);
+    const d = stack(640, 500, 330, { tank: 1, boosters: sep < 0, flame: 1 });
+    if (sep >= 0) { once('sep', () => beep(160, 0.3, 0.2, 'sawtooth')); for (const dir of [-1, 1]) { ctx.save(); ctx.translate(640 + dir * (d.bx + sep * 90), 500 - d.Hb / 2 + sep * sep * 120); ctx.rotate(dir * sep * 0.7); ctx.drawImage(art.booster, -d.Wb / 2, -d.Hb / 2, d.Wb, d.Hb); ctx.restore(); } }
+    ctx.restore();
+    if (sep >= 0 && sep < 2.5) box(40, '#8f93b8', 'FLIGHT', ['Booster separation.']);
+  } else {                                              // above the air: Earth's curve falls away below
+    const k = clamp((t - T_EDGE) / 14), drop = ease(k) * 300;
+    space(t * 6);
+    if (art.edge.width) { ctx.drawImage(art.edge, 0, drop, W, H); const f = ctx.createLinearGradient(0, drop, 0, drop + 220); f.addColorStop(0, '#000'); f.addColorStop(1, 'rgba(0,0,0,0)'); ctx.fillStyle = f; ctx.fillRect(0, drop - 1, W, 222); }
+    const burning = t < T_LEFT - 1.5, sep = t - (T_LEFT - 1.5), y = 470 - ease(clamp((t - T_EDGE) / 6)) * 130, size = 260 - ease(k) * 60;
+    if (!burning) once('meco', () => { rumble(0); beep(140, 0.35, 0.2, 'sawtooth'); });
+    if (sep >= 0 && sep < 6) { ctx.save(); ctx.translate(640 - sep * 30, y - size / 2 + sep * 70); ctx.rotate(sep * 0.25); const w = size * 0.26; ctx.globalAlpha = clamp(1.5 - sep / 4); ctx.drawImage(art.tank, -w / 2, -size / 2, w, size); ctx.restore(); ctx.globalAlpha = 1; }
+    stack(640, y, size, { tank: burning, boosters: 0, flame: burning });
+    if (t >= T_LEFT && t < T_LEFT + 6) { once('left', radioBeep); box(40, '#7fd4ff', 'GROUND STATION', ['You left the Earth atmosphere.']); }
+    if (t >= T_CALL) {                                  // 8 seconds later: the urgent call, twice, and the ship's own warning
+      const c = t - T_CALL, second = c >= 4;
+      once('call1', () => { radioBeep(); beep(1200, 0.07, 0.08, 'sine', 0.2); }); if (second) once('call2', () => { radioBeep(); beep(1200, 0.07, 0.08, 'sine', 0.2); });
+      if (Math.floor(c / 0.3) % 7 !== 6) box(40, '#7fd4ff', 'GROUND STATION · URGENT', [second ? 'I repeat: run immediately to the shelter room!' : 'Attention! Run immediately to the shelter room!']);
+      if (c > 1.5) {
+        const p = 0.5 + 0.5 * Math.sin(c * 7); once('warn', () => { flags.alarm = 1; });
+        if (Math.floor(c / 0.9) !== flags.al) { flags.al = Math.floor(c / 0.9); beep(880, 0.18, 0.1); beep(660, 0.18, 0.1, 'square', 0.2); }
+        ctx.fillStyle = `rgba(255,20,30,${0.08 + 0.14 * p})`; ctx.fillRect(0, 0, W, H);
+        box(H - 170, '#ff5f6b', 'SHIP WARNING', ['Strong solar flare incoming.'], '#3a060cee');
+      }
+    }
+    if (t > T_IN) goTo('../hazlaoum/index.html?story=flare');
+  }
+}
+
+function frame(dt) {
+  t += dt;
+  if (scene === 'intro') intro(); else if (scene === 'resume') resume(); else launch();
+  if (leaving) { leaving.t += dt; ctx.fillStyle = `rgba(0,0,0,${clamp(leaving.t / 0.6)})`; ctx.fillRect(0, 0, W, H); if (leaving.t > 0.7 && !leaving.done) { leaving.done = 1; location.href = leaving.url; } }
+}
+function press() { audio(); if (scene === 'intro') introSkip(); else if (scene === 'resume') resumePick(); }
+addEventListener('keydown', e => {
+  if (scene === 'resume' && (e.code === 'ArrowUp' || e.code === 'KeyW')) sel = (sel + 2) % 3;
+  else if (scene === 'resume' && (e.code === 'ArrowDown' || e.code === 'KeyS')) sel = (sel + 1) % 3;
+  else if (e.code === 'Enter' || e.code === 'Space') press();
+  else if (e.code === 'Escape') goTo('../index.html');
+  else audio();
+});
+document.getElementById('stage').addEventListener('click', e => {
+  if (scene === 'resume') { const y = (e.clientY - cv.getBoundingClientRect().top) / cv.getBoundingClientRect().height * H, i = Math.round((y - 350) / 60); if (i >= 0 && i < 3) sel = i; }
+  press();
+});
+let last = performance.now();
+function loop(now) { const dt = Math.max(0, Math.min(0.05, (now - last) / 1000)); last = now; frame(dt); requestAnimationFrame(loop); }
+audio(); requestAnimationFrame(loop);
+</script>
+</body>
+</html>

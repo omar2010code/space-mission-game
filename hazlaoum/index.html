@@ -76,63 +76,35 @@ const haz = Object.fromEntries(POSES.map(p => [p, img(`haz_${p}.png`)]));
 // floor: convex polygon the player must stay inside (clockwise). blocks: solid equipment [x, y, w, h].
 // hatches: float into `zone` to travel; you arrive at `spawn` drifting with `vel`.
 // map: the room's outline and label position on the ship map (M key).
-// The ship is one stack, as on the real Apollo: engine - science - command - tunnel - lander cabin - descent bay.
+// The ship is the three rooms built in the workshop, stacked: control room - communication room - life support & shelter.
+// lamp: where the room's red emergency lamp is.
 const ROOMS = {
-  engine: {
-    name: 'Engine & Power Bay', sub: 'Service Module', bg: img('room_engine.png'),
-    floor: [[292,128],[732,128],[866,212],[866,396],[726,528],[298,528],[158,396],[158,176]],
-    blocks: [[292,60,156,100],[578,60,64,100],[694,104,84,128],[770,182,96,200],[166,100,90,112],
-             [158,236,164,164],[358,318,314,146]],
-    hatches: [{ zone: [468,100,90,62], to: 'science', spawn: [512,425], vel: [0,-70] }],
-    map: { pts: [[110,206],[270,206],[270,366],[110,366]], label: [190,400] },
+  control: {
+    name: 'Control Room', sub: 'Room 1 · flight deck', bg: img('room_control.png'), lamp: [803, 176],
+    floor: [[300,200],[720,200],[768,216],[838,372],[712,500],[322,500],[192,396],[192,236]],
+    blocks: [[340,60,350,150],[380,150,66,74],[580,150,66,74],[186,190,104,196]],
+    hatches: [{ zone: [470,452,86,50], to: 'comms', spawn: [512,240], vel: [0,70] }],
+    start: [512,330],
+    map: { pts: [[462,120],[562,120],[592,160],[592,226],[432,226],[432,160]], label: 'Control Room' },
   },
-  science: {
-    name: 'Science & Comms Bay', sub: 'Service Module', bg: img('room_science.png'),
-    floor: [[205,142],[815,142],[932,170],[932,405],[820,512],[200,512],[92,405],[92,170]],
-    blocks: [[303,100,142,80],[585,85,115,85],[100,165,145,125],[240,178,68,68],[718,138,135,108],
-             [768,255,85,72],[866,183,66,140],[180,376,132,140],[316,450,78,66],[680,395,145,122]],
-    hatches: [{ zone: [468,120,88,50], to: 'command', spawn: [512,425], vel: [0,-70] },
-              { zone: [470,470,88,50], to: 'engine', spawn: [512,215], vel: [0,70] }],
-    map: { pts: [[270,206],[420,206],[420,366],[270,366]], label: [345,172] },
+  comms: {
+    name: 'Communication Room', sub: 'Room 2 · radio link to Earth', bg: img('room_comms.png'), lamp: [595, 72],
+    floor: [[345,168],[685,168],[808,204],[808,380],[686,514],[340,514],[216,380],[216,204]],
+    blocks: [[216,186,126,170],[598,112,112,104],[736,160,74,224]],
+    hatches: [{ zone: [470,168,86,34], to: 'control', spawn: [512,400], vel: [0,-70] },
+              { zone: [470,452,86,50], to: 'shelter', spawn: [512,250], vel: [0,70] }],
+    map: { pts: [[432,232],[592,232],[592,332],[432,332]], label: 'Communication Room' },
   },
-  command: {
-    name: 'Command Room', sub: 'Command Module', bg: img('room_command.png'),
-    floor: [[275,178],[748,178],[848,262],[848,402],[738,518],[272,518],[168,408],[168,262]],
-    // the flight console is split in two: he floats over the middle seat to reach the overhead docking hatch
-    blocks: [[378,150,94,98],[552,150,94,98],[748,140,100,162],[196,170,84,78],[176,256,58,72],[176,336,64,76],
-             [238,416,174,104],[646,428,146,92],[472,322,82,70]],
-    hatches: [{ zone: [472,178,80,42], to: 'tunnel', spawn: [512,420], vel: [0,-60] },
-              { zone: [468,480,90,60], to: 'science', spawn: [512,215], vel: [0,70] }],
-    start: [512,440],
-    map: { pts: [[420,206],[600,256],[600,316],[420,366]], label: [505,400] },
-  },
-  tunnel: {
-    name: 'Docking Tunnel', sub: 'Between the two spacecraft', bg: img('room_tunnel.png'),
-    floor: [[450,40],[575,40],[575,532],[450,532]],
-    blocks: [],
-    hatches: [{ zone: [455,40,115,58], to: 'lm', spawn: [512,430], vel: [0,-40] },
-              { zone: [455,474,115,58], to: 'command', spawn: [512,275], vel: [0,20] }],
-    map: { pts: [[600,266],[650,266],[650,306],[600,306]], label: [625,172] },
-  },
-  lm: {
-    name: 'Lunar Module Cabin', sub: 'Lander · ascent stage', bg: img('room_lm.png'),
-    floor: [[210,200],[815,200],[822,230],[822,418],[722,512],[298,512],[200,418],[200,230]],
-    blocks: [[222,160,216,90],[314,212,38,62],[590,160,155,90],[670,212,40,62],[742,175,64,88],
-             [474,308,76,90],[232,362,136,142],[722,372,98,98],[672,462,56,46]],
-    hatches: [{ zone: [468,180,88,46], to: 'descent', spawn: [512,400], vel: [0,-60] },
-              { zone: [468,468,88,50], to: 'tunnel', spawn: [512,150], vel: [0,60] }],
-    map: { pts: [[650,236],[730,226],[770,246],[770,326],[730,346],[650,336]], label: [712,400] },
-  },
-  descent: {
-    name: 'Descent Bay', sub: 'Lander · descent stage', bg: img('room_descent.png'),
-    floor: [[215,125],[808,125],[892,150],[892,425],[812,505],[212,505],[130,425],[130,205]],
-    blocks: [[150,65,150,135],[348,55,82,108],[440,45,145,155],[602,60,62,98],[722,115,170,135],[840,230,52,62],
-             [130,245,75,100],[820,325,72,100],[175,395,170,112],[620,418,152,90],[774,435,60,70]],
-    hatches: [{ zone: [470,462,88,50], to: 'lm', spawn: [512,272], vel: [0,40] }],
-    map: { pts: [[770,236],[800,206],[870,206],[900,236],[900,336],[870,366],[800,366],[770,336]], label: [835,172] },
+  shelter: {
+    name: 'Life Support & Shelter', sub: 'Room 3 · radiation shelter', bg: img('room_shelter.png'), lamp: [707, 174],
+    floor: [[330,168],[700,168],[794,196],[794,400],[690,478],[346,478],[226,400],[226,196]],
+    blocks: [[284,120,172,116],[236,214,164,148],[640,170,156,184],[566,90,124,96],[352,438,46,42],[592,446,76,34]],
+    hatches: [{ zone: [470,168,86,34], to: 'comms', spawn: [512,410], vel: [0,-70] }],
+    map: { pts: [[432,338],[592,338],[592,438],[432,438]], label: 'Life Support & Shelter' },
   },
 };
 const visited = new Set();
+const flareImg = img('bg_flare.png');
 let mapOpen = false;
 
 // ---------- settings + sound ----------
@@ -164,8 +136,8 @@ function thump(freq, len, vol) {                     // wall bump / hatch sound
 
 // ---------- state ----------
 let state = 'menu';                                  // menu | settings | play
-let room = ROOMS.command, roomTitleT = 9;
-const P = { x: 512, y: 440, vx: 0, vy: 0, rot: 0, spin: 0, t: 0, pose: 'idle' };
+let room = ROOMS.control, roomTitleT = 9;
+const P = { x: 512, y: 330, vx: 0, vy: 0, rot: 0, spin: 0, t: 0, pose: 'idle' };
 const puffs = [];
 const stars = Array.from({ length: 90 }, (_, i) => ({ x: (i * 197.3) % W, y: (i * 89.7 + i * i * 3.1) % H, a: 0.35 + (i % 7) / 10 }));
 const drifter = { x: 880, y: 110, vx: -9, vy: 5, rot: 0.3 };
@@ -199,7 +171,7 @@ function highlight(s) { items(s).forEach((el, i) => el.classList.toggle('sel', i
 function refreshSettings() { $('volVal').textContent = save.volume; $('fsVal').textContent = document.fullscreenElement ? 'On' : 'Off'; }
 function activate(act, step) {
   audio();
-  if (act === 'start') fadeThrough(() => { mapOpen = false; enterRoom('command', ROOMS.command.start, [0, -30]); show('play'); });
+  if (act === 'start') fadeThrough(() => { mapOpen = false; enterRoom('control', ROOMS.control.start, [0, 30]); show('play'); });
   else if (act === 'settings') { sel.settings = 0; highlight('settings'); refreshSettings(); show('settings'); }
   else if (act === 'back') show('menu');
   else if (act === 'home') location.href = '../index.html';
@@ -225,8 +197,9 @@ addEventListener('keydown', e => {
   keys[e.code] = true;
   if (fade.dir || e.repeat && state !== 'settings') return;
   if (state === 'play') {
+    if (story) storyKey(e);
     if (e.code === 'KeyM') mapOpen = !mapOpen;
-    else if (e.code === 'Escape') { if (mapOpen) mapOpen = false; else fadeThrough(() => show('menu')); }
+    else if (e.code === 'Escape') { if (mapOpen) mapOpen = false; else if (story) location.href = '../index.html'; else fadeThrough(() => show('menu')); }
     return;
   }
   const list = items(state), n = list.length, act = list[sel[state]].dataset.act;
@@ -314,6 +287,100 @@ function updatePlayer(dt) {
   }
 }
 
+// ---------- story: the solar flare ----------
+// Arriving with ?story=flare: the ground station has just told Hazalqoum to run to the shelter room.
+// phase: run (alarm, countdown) -> flare (it hits) -> dark (power out, red battery lamp) -> end. Or fail if he was too slow.
+let story = null;
+const FLARE_IN = 40;                                  // seconds until the flare hits
+const LINES = [                                       // what is said once the power is out
+  ['SHIP', 'Main power lost. Running on the backup battery.'],
+  ['HAZALQOUM', 'Everything is dark... only that red lamp on the battery.'],
+  ['HAZALQOUM', 'No power. No radio. Nobody can hear me out here.'],
+  ['HAZALQOUM', 'Wait. I am not alone on this ship. I have an AI.'],
+  ['HAZALQOUM', 'ALKABIR!'],
+];
+function beep(freq, len, vol, type = 'square') {
+  if (!audio()) return;
+  const o = ac.createOscillator(), g = ac.createGain(), t = ac.currentTime;
+  o.type = type; o.frequency.value = freq; g.gain.setValueAtTime(vol, t); g.gain.setValueAtTime(vol, t + len * 0.8); g.gain.linearRampToValueAtTime(0, t + len);
+  o.connect(g).connect(master); o.start(t); o.stop(t + len);
+}
+function boom() {
+  if (!audio()) return;
+  const n = ac.sampleRate * 2.5, buf = ac.createBuffer(1, n, ac.sampleRate), d = buf.getChannelData(0);
+  for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / n, 2);
+  const src = ac.createBufferSource(), lp = ac.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 300;
+  src.buffer = buf; src.connect(lp).connect(master); src.start();
+}
+function startStory() {
+  story = { phase: 'run', t: 0, left: FLARE_IN, beepT: 0, line: 0, lineT: 0 };
+  mapOpen = false; enterRoom('control', ROOMS.control.start, [0, 30]); show('play');
+  $('hud').textContent = 'WASD / arrow keys to push off · the shelter is two hatches down · M for map';
+  try { localStorage.setItem('hazlaoum.story', 'flare'); } catch (e) {}
+}
+function updateStory(dt) {
+  const st = story; st.t += dt;
+  if (st.phase === 'run') {
+    st.left -= dt; st.beepT -= dt;
+    if (room === ROOMS.shelter && st.left > 4) st.left = 4;        // he made it: the flare arrives moments later
+    if (st.beepT <= 0) { st.beepT = st.left < 10 ? 0.45 : 0.9; beep(880, 0.18, 0.12); setTimeout(() => beep(660, 0.18, 0.12), 200); }
+    if (st.left <= 0) { st.phase = room === ROOMS.shelter ? 'flare' : 'fail'; st.t = 0; boom(); }
+  } else if (st.phase === 'flare' && st.t > 3.2) { st.phase = 'dark'; st.t = 0; st.lineT = 0; thump(60, 1.2, 0.5); $('hud').textContent = 'Enter: continue'; }
+  else if (st.phase === 'dark') st.lineT += dt;
+}
+function storyKey(e) {                                 // Enter / Space: next line, retry, or finish
+  if (e.code !== 'Enter' && e.code !== 'Space') return;
+  const st = story;
+  if (st.phase === 'fail' && st.t > 1.5) fadeThrough(startStory);
+  else if (st.phase === 'dark' && st.lineT > 0.4) { st.line++; st.lineT = 0; if (st.line >= LINES.length) { st.phase = 'end'; st.t = 0; } else beep(st.line === LINES.length - 1 ? 520 : 300, 0.08, 0.08, 'sine'); }
+  else if (st.phase === 'end' && st.t > 1) location.href = '../index.html';
+}
+function box(x, y, w, h, col, who, text, small) {       // a message box: radio, ship warning or speech
+  ctx.fillStyle = '#0b0c16ee'; ctx.fillRect(x, y, w, h); ctx.strokeStyle = col; ctx.lineWidth = 2; ctx.strokeRect(x, y, w, h);
+  ctx.textAlign = 'left'; ctx.fillStyle = col; ctx.font = 'bold 13px ui-monospace, Consolas, monospace'; ctx.fillText(who, x + 14, y + 22);
+  ctx.fillStyle = '#f3efe6'; ctx.font = '19px Georgia, serif'; ctx.fillText(text, x + 14, y + 50);
+  if (small) { ctx.fillStyle = '#8f93b8'; ctx.font = '12px ui-monospace, Consolas, monospace'; ctx.textAlign = 'right'; ctx.fillText(small, x + w - 12, y + h - 10); }
+}
+function card(lines, col, hint) {                        // a black title card
+  ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H); ctx.fillStyle = '#fff';
+  for (const s of stars) { ctx.globalAlpha = s.a * 0.6; ctx.fillRect(s.x | 0, s.y | 0, 2, 2); } ctx.globalAlpha = 1;
+  ctx.textAlign = 'center'; ctx.fillStyle = col; ctx.font = '34px Georgia, serif';
+  lines.forEach((l, i) => ctx.fillText(l, W / 2, H / 2 - (lines.length - 1) * 22 + i * 44));
+  if (hint) { ctx.fillStyle = '#8f93b8'; ctx.font = '14px ui-monospace, Consolas, monospace'; ctx.fillText(hint, W / 2, H - 60); }
+}
+function drawStory() {
+  const st = story, [lx, ly] = room.lamp;
+  if (st.phase === 'run') {
+    const k = 0.5 + 0.5 * Math.sin(st.t * (st.left < 10 ? 12 : 6.5));          // red emergency lights flash with the alarm
+    ctx.globalCompositeOperation = 'multiply'; ctx.fillStyle = `rgb(255,${Math.round(70 + 185 * (1 - k))},${Math.round(70 + 185 * (1 - k))})`; ctx.fillRect(0, 0, W, H);
+    ctx.globalCompositeOperation = 'lighter'; const g = ctx.createRadialGradient(lx, ly, 2, lx, ly, 150);
+    g.addColorStop(0, `rgba(255,40,40,${0.75 * k})`); g.addColorStop(1, 'rgba(255,40,40,0)'); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.fillStyle = '#3a060cee'; ctx.fillRect(0, 0, W, 44); ctx.fillStyle = '#ff5f6b'; ctx.fillRect(0, 44, W, 2);
+    ctx.textAlign = 'center'; ctx.fillStyle = '#ffdede'; ctx.font = 'bold 17px ui-monospace, Consolas, monospace';
+    ctx.fillText(room === ROOMS.shelter ? 'SHIP WARNING · SOLAR FLARE ARRIVING · BRACE!' : `SHIP WARNING · STRONG SOLAR FLARE INCOMING · ${Math.ceil(st.left)} s`, W / 2, 28);
+    if (st.t < 9 && room !== ROOMS.shelter && Math.floor(st.t / 0.35) % 6 !== 5) box(212, 56, 600, 66, '#7fd4ff', 'GROUND STATION', st.t < 4.5 ? 'Attention! Run immediately to the shelter room!' : 'I repeat: run immediately to the shelter room!');
+    if (room === ROOMS.shelter) box(262, 56, 500, 66, '#6fe39a', 'HAZALQOUM', 'Made it. The thick walls will stop the radiation.');
+  } else if (st.phase === 'flare') {
+    const sh = st.t < 2.4 ? 10 : 0;
+    if (flareImg.width) ctx.drawImage(flareImg, (Math.random() - 0.5) * sh, (Math.random() - 0.5) * sh, W, H);
+    ctx.fillStyle = `rgba(255,250,235,${st.t < 0.5 ? 1 - st.t * 2 : st.t > 2.4 ? Math.min(1, (st.t - 2.4) / 0.4) : 0})`; ctx.fillRect(0, 0, W, H);
+    if (st.t > 2.8) { ctx.fillStyle = `rgba(0,0,0,${Math.min(1, (st.t - 2.8) / 0.4)})`; ctx.fillRect(0, 0, W, H); }
+  } else if (st.phase === 'dark' || st.phase === 'end') {
+    const k = 0.6 + 0.4 * Math.sin(st.t * 3), [bx, by] = ROOMS.shelter.lamp, here = room === ROOMS.shelter;
+    ctx.globalCompositeOperation = 'multiply'; ctx.fillStyle = '#ff4a4a'; ctx.fillRect(0, 0, W, H); ctx.globalCompositeOperation = 'source-over';
+    const g = ctx.createRadialGradient(bx, by, 10, bx, by, here ? 200 + 30 * k : 1); g.addColorStop(0, 'rgba(3,0,0,0)'); g.addColorStop(1, 'rgba(3,0,0,.95)');
+    ctx.fillStyle = here ? g : 'rgba(3,0,0,.95)'; ctx.fillRect(0, 0, W, H);
+    if (here) { ctx.globalCompositeOperation = 'lighter'; const r = ctx.createRadialGradient(bx, by, 1, bx, by, 60); r.addColorStop(0, `rgba(255,60,60,${0.9 * k})`); r.addColorStop(1, 'rgba(255,60,60,0)'); ctx.fillStyle = r; ctx.fillRect(0, 0, W, H); ctx.globalCompositeOperation = 'source-over'; }
+    ctx.globalAlpha = 0.5; drawHaz(P.x, P.y - 6, P.rot, P.pose, 0.9); ctx.globalAlpha = 1;      // he is a dim shape in the dark
+    if (st.phase === 'dark' && st.t > 1.2) { const [who, text] = LINES[st.line]; box(162, 440, 700, 76, who === 'SHIP' ? '#ff5f6b' : '#6fe39a', who, text, 'Enter ▸'); }
+    if (st.phase === 'end') { ctx.globalAlpha = Math.min(1, st.t); card(['To be continued...'], '#f3efe6', st.t > 1 ? 'Enter: main menu' : ''); ctx.globalAlpha = 1; }
+  } else if (st.phase === 'fail') {
+    ctx.fillStyle = `rgba(255,250,235,${Math.max(0, 1 - st.t)})`; ctx.fillRect(0, 0, W, H);
+    ctx.globalAlpha = Math.min(1, st.t / 1.2); card(['The flare hit before you', 'reached the shelter room.'], '#ff4650', st.t > 1.5 ? 'Enter: try again' : ''); ctx.globalAlpha = 1;
+  }
+}
+
 // ---------- drawing ----------
 function drawHaz(x, y, rot, pose, scale) {
   const im = haz[pose]; if (!im.width) return;
@@ -346,40 +413,32 @@ function drawPlay() {
   }
 }
 
-// Ship map: the whole stack side-on. Rooms you have been in are lit, the one you are in is cyan.
+// Ship map: the three rooms stacked. Rooms you have been in are lit, the one you are in is cyan.
 function drawMap() {
   ctx.fillStyle = '#05050bee'; ctx.fillRect(0, 0, W, H);
   ctx.textAlign = 'center';
-  ctx.fillStyle = '#f3efe6'; ctx.font = '32px Georgia, serif'; ctx.fillText('Ship Map', W / 2, 70);
-  ctx.fillStyle = '#b9b6d6'; ctx.font = '14px Georgia, serif'; ctx.fillText('A P O L L O   C S M   +   L U N A R   M O D U L E', W / 2, 96);
-
-  ctx.lineWidth = 2; ctx.strokeStyle = '#3a4060'; ctx.fillStyle = '#12131f';   // parts you cannot enter
+  ctx.fillStyle = '#f3efe6'; ctx.font = '32px Georgia, serif'; ctx.fillText('Ship Map', W / 2, 62);
+  ctx.fillStyle = '#b9b6d6'; ctx.font = '14px Georgia, serif'; ctx.fillText('T H R E E   R O O M S', W / 2, 88);
   const shape = pts => { ctx.beginPath(); pts.forEach(([x, y], i) => i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)); ctx.closePath(); };
-  shape([[62,246],[110,264],[110,308],[62,326]]); ctx.fill(); ctx.stroke();                    // main engine bell
-  shape([[900,262],[940,250],[940,322],[900,310]]); ctx.fill(); ctx.stroke();                  // descent engine bell
-  ctx.beginPath();                                                                             // landing legs
-  for (const [x1, y1, x2, y2] of [[800,206,770,150],[870,206,915,150],[800,366,770,422],[870,366,915,422]]) { ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); }
-  ctx.stroke();
-
   let cur;
   for (const key in ROOMS) {
     const r = ROOMS[key], here = r === room, seen = visited.has(key);
     shape(r.map.pts);
     ctx.fillStyle = here ? '#1d4a63' : seen ? '#232742' : '#12131f'; ctx.fill();
     ctx.strokeStyle = here ? '#7fd4ff' : seen ? '#a9a6c8' : '#3a4060'; ctx.lineWidth = here ? 3 : 2; ctx.stroke();
-    const cx = r.map.pts.reduce((s, p) => s + p[0], 0) / r.map.pts.length, [lx, ly] = r.map.label;
-    ctx.strokeStyle = '#3a4060'; ctx.lineWidth = 1;                                             // leader line to the label
-    ctx.beginPath(); ctx.moveTo(cx, ly < 286 ? 206 : 366); ctx.lineTo(lx, ly < 286 ? ly + 8 : ly - 16); ctx.stroke();
-    ctx.fillStyle = here ? '#7fd4ff' : seen ? '#f3efe6' : '#6b6f8f'; ctx.font = '15px Georgia, serif';
-    ctx.fillText(seen ? r.name : '? ? ?', lx, ly);
-    if (here) cur = [cx, 286];
+    const ys = r.map.pts.map(p => p[1]), cy = (Math.min(...ys) + Math.max(...ys)) / 2;
+    ctx.strokeStyle = '#3a4060'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(592, cy); ctx.lineTo(640, cy); ctx.stroke();
+    ctx.textAlign = 'left'; ctx.fillStyle = here ? '#7fd4ff' : seen ? '#f3efe6' : '#6b6f8f'; ctx.font = '16px Georgia, serif';
+    ctx.fillText(seen || story ? r.map.label : '? ? ?', 648, cy + 5);
+    if (key === 'shelter' && story && story.phase === 'run') { ctx.fillStyle = '#ff7b85'; ctx.font = '13px ui-monospace, Consolas, monospace'; ctx.fillText('◀ RUN HERE', 648, cy + 26); }
+    if (here) cur = [512, cy];
   }
-  ctx.fillStyle = '#f3efe6';                                                                    // hatches between rooms
-  for (const x of [270, 420, 600, 650, 770]) { ctx.beginPath(); ctx.arc(x, 286, 5, 0, 7); ctx.fill(); }
-  if (cur) drawHaz(cur[0], cur[1] + Math.sin(P.t * 3) * 3, 0, 'idle', 0.55);                    // you are here
+  ctx.textAlign = 'center'; ctx.fillStyle = '#f3efe6';                                            // hatches between rooms
+  for (const y of [229, 335]) { ctx.beginPath(); ctx.arc(512, y, 5, 0, 7); ctx.fill(); }
+  if (cur) drawHaz(cur[0], cur[1] + Math.sin(P.t * 3) * 3, 0, 'idle', 0.55);                      // you are here
   ctx.fillStyle = '#7fd4ff'; ctx.font = '13px ui-monospace, Consolas, monospace';
-  ctx.fillText('you are in: ' + room.name, W / 2, 470);
-  ctx.fillStyle = '#5f6386'; ctx.fillText('M or Esc to close', W / 2, 520);
+  ctx.fillText('you are in: ' + room.name, W / 2, 486);
+  ctx.fillStyle = '#5f6386'; ctx.fillText('M or Esc to close', W / 2, 526);
 }
 
 function drawMenu(dt) {
@@ -399,7 +458,7 @@ function loop(now) {
   updateFade(dt);
   if (state === 'play') {
     if (mapOpen) { P.t += dt; drawPlay(); drawMap(); }                // the game pauses while the map is open
-    else { updatePlayer(dt); roomTitleT += dt; drawPlay(); }
+    else { if (story) updateStory(dt); if (!story || !['flare', 'fail', 'end'].includes(story.phase)) updatePlayer(dt); roomTitleT += dt; drawPlay(); if (story) drawStory(); }
   } else drawMenu(dt);
   requestAnimationFrame(loop);
 }
@@ -407,6 +466,7 @@ ctx.imageSmoothingEnabled = false;
 requestAnimationFrame(loop);
 // Arriving from a successful launch in the rocket workshop: skip the title and go straight aboard.
 if (new URLSearchParams(location.search).has('from')) activate('start');
+if (new URLSearchParams(location.search).get('story') === 'flare') startStory();
 </script>
 </body>
 </html>

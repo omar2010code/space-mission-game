@@ -12,13 +12,13 @@
   canvas { position:absolute; inset:0; width:100%; height:100%; }
   .screen { position:absolute; inset:0; display:none; flex-direction:column; align-items:center; justify-content:center; text-align:center; isolation:isolate; }
   .screen.on { display:flex; }
-  .disc { position:absolute; left:50%; top:42%; width:42cqw; aspect-ratio:1; transform:translate(-50%,-50%); border-radius:50%; background:#11121c; z-index:-1; }
+  .disc { position:absolute; left:50%; top:46%; width:50cqw; aspect-ratio:1; transform:translate(-50%,-50%); border-radius:50%; background:#11121c; z-index:-1; }
   .title { font-size:6.4cqw; color:#f3efe6; letter-spacing:.1cqw; }
   .tagline { font-size:2.3cqw; letter-spacing:.35cqw; color:#b9b6d6; }
-  .orn { width:42cqw; height:1px; background:#8a88a8; margin:2cqw 0 2.6cqw; position:relative; }
+  .orn { width:42cqw; height:1px; background:#8a88a8; margin:1.4cqw 0 1.8cqw; position:relative; }
   .orn i { position:absolute; left:50%; top:50%; width:1.2cqw; height:1.2cqw; transform:translate(-50%,-50%) rotate(45deg);
     border:1px solid #d8d6ee; background:#11121c; outline:.8cqw solid #11121c; }
-  .item { font-size:2.9cqw; margin:.6cqw 0; padding:.2cqw 4cqw; position:relative; cursor:pointer; white-space:nowrap; }
+  .item { font-size:2.6cqw; margin:.35cqw 0; padding:.2cqw 4cqw; position:relative; cursor:pointer; white-space:nowrap; }
   .item.sel { color:#fff; text-shadow:0 0 1.4cqw #ffffff66; }
   .item.sel::before, .item.sel::after { content:"◆"; position:absolute; top:50%; transform:translateY(-50%); font-size:1.1cqw; color:#d8d6ee; }
   .item.sel::before { left:1.2cqw; } .item.sel::after { right:1.2cqw; }
@@ -41,9 +41,10 @@
     <div class="title">HAZLAOUM</div>
     <div class="tagline">a space mission design game</div>
     <div class="orn"><i></i></div>
-    <div class="item sel" data-go="rocket/index.html">Start the mission<small>chapter 1 · design and launch your rocket</small></div>
-    <div class="item" data-go="hazlaoum/index.html">Float in orbit<small>chapter 2 · explore the spacecraft in zero gravity</small></div>
-    <div class="item" data-go="moon/index.html">Moon rescue<small>chapter 3 · drive the buggy and bring back the rover's sample</small></div>
+    <div class="item sel" data-go="story/index.html">Play<small>the story · Mr. Hazalqoum is called for a mission</small></div>
+    <div class="item" data-go="rocket/index.html">Rocket workshop<small>free play · design and launch your rocket</small></div>
+    <div class="item" data-go="hazlaoum/index.html">Float in orbit<small>free play · explore the three rooms in zero gravity</small></div>
+    <div class="item" data-go="moon/index.html">Moon rescue<small>free play · drive the buggy and bring back the rover's sample</small></div>
     <div class="item" data-act="how">How to play</div>
     <div class="foot">↑ ↓ select · Enter confirm · NASA Space Apps 2026</div>
   </div>
@@ -52,6 +53,7 @@
     <h2>How to play</h2>
     <div class="orn" style="margin:1.4cqw 0 2.4cqw"><i></i></div>
     <ol class="how">
+      <li><b>Play: the story.</b> Build a spacecraft that passes the test, launch it, and deal with what happens on the way. Your place in the story is saved.</li>
       <li><b>Chapter 1: the rocket workshop.</b> Pick a mission, then build a rocket from the nose down. Every part costs money, adds mass and uses or makes electricity. Watch the gauges and press Launch. The mission report tells you which step failed, and why.</li>
       <li><b>Chapter 2: adrift in orbit.</b> Once your mission succeeds, board the spacecraft. Push off with WASD or the arrow keys and float through the hatches. Press M for the ship map.</li>
       <li><b>Chapter 3: moon rescue.</b> Drive the buggy along the marked road, follow the lost rover's wheel tracks, and bring its sample back to the lander before the oxygen runs low.</li>
