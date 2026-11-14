@@ -40,6 +40,19 @@
   #sample { right:1.5%; top:2.5%; }
   #prompt { left:50%; bottom:11%; transform:translateX(-50%); border-color:#ffcf5a; color:#ffcf5a; font-size:1.5cqw; display:none; pointer-events:auto; cursor:pointer; }
   #keys { left:50%; bottom:2.5%; transform:translateX(-50%); color:#8f93b8; font-size:1cqw; white-space:nowrap; }
+  /* multiplayer */
+  #mpBoard { right:1.5%; top:2.5%; min-width:20%; display:none; font-size:1.05cqw; }
+  #mpBoard b { display:block; color:#ffcf5a; font-weight:normal; margin-bottom:.3cqw; }
+  #mpBoard div { display:flex; gap:.6cqw; align-items:center; margin:.15cqw 0; } #mpBoard span { margin-left:auto; color:#c9c7e4; padding-left:1cqw; }
+  #mpBoard i, .srv i { display:inline-block; width:.9cqw; height:.9cqw; border-radius:50%; }
+  .mpbox { width:60%; max-height:56%; overflow-y:auto; text-align:left; font:1.25cqw ui-monospace, Consolas, monospace; color:#c9c7e4; }
+  .srv { display:flex; gap:1.4cqw; align-items:center; padding:.7cqw 1cqw; border-bottom:1px solid #262a44; }
+  .srv b { color:#f3efe6; font-weight:normal; min-width:7cqw; } .srv span { color:#a9a6c8; }
+  .btn { display:inline-block; padding:.45cqw 1.1cqw; border:1px solid #4a5080; border-radius:.4cqw; color:#f3efe6; cursor:pointer; background:#171a2e; margin-left:auto; }
+  .btn:hover { border-color:#7fd4ff; } .btn.on { border-color:#6fe39a; background:#173327; }
+  .dim { color:#6b6f8f; }
+  #mpName { font:1.4cqw ui-monospace, Consolas, monospace; background:#11121c; color:#f3efe6; border:1px solid #4a5080; border-radius:.4cqw; padding:.4cqw .8cqw; width:16cqw; }
+  .row { display:flex; gap:1cqw; align-items:center; margin:1cqw 0; font:1.3cqw ui-monospace, Consolas, monospace; color:#a9a6c8; }
 </style>
 </head>
 <body>
@@ -52,6 +65,7 @@
     <div class="box" id="sample">Sample: <span id="sampleT">not found</span></div>
     <div class="box" id="prompt"></div>
     <div class="box" id="keys">W A S D or arrow keys to drive · E to pick up · Esc for menu</div>
+    <div class="box" id="mpBoard"></div>
   </div>
 
   <div class="screen on shade" id="menu">
@@ -78,6 +92,35 @@
     <div class="item" data-act="start" style="margin-top:2cqw">Drive</div>
   </div>
 
+  <div class="screen shade" id="mpLobby">
+    <h2>Multiplayer · Moon challenges</h2>
+    <div class="orn" style="margin:1cqw 0 1.4cqw"><i></i></div>
+    <div class="row">Your name <input id="mpName" maxlength="16"><span class="btn" id="mpCreate" style="margin-left:2cqw">+ Create server</span></div>
+    <div class="mpbox" id="mpServers"></div>
+    <div class="row" id="mpStatus" style="font-size:1.05cqw"></div>
+    <div class="item" id="mpBack">Main menu</div>
+  </div>
+
+  <div class="screen shade" id="mpRoom">
+    <h2 id="mpRoomTitle">Server</h2>
+    <div class="orn" style="margin:1cqw 0 1.4cqw"><i></i></div>
+    <div class="row">Challenge
+      <span class="btn" id="mpMode-race" style="margin-left:1cqw">1 · Race to the rover</span>
+      <span class="btn" id="mpMode-mats" style="margin-left:0">2 · Materials hunt</span></div>
+    <div class="mpbox" id="mpPlayers" style="max-height:30%"></div>
+    <div class="row" id="mpWait" style="font-size:1.1cqw"></div>
+    <div class="item" id="mpStart" style="color:#6fe39a">Start</div>
+    <div class="item" id="mpLeave">Leave the server</div>
+  </div>
+
+  <div class="screen shade" id="mpResult">
+    <h2 id="mpResTitle"></h2>
+    <div class="orn" style="margin:1cqw 0 1.4cqw"><i></i></div>
+    <div class="mpbox" id="mpResText"></div>
+    <div class="item" id="mpAgain">Back to the server</div>
+    <div class="item" id="mpQuit">Leave the server</div>
+  </div>
+
   <div class="screen shade" id="end">
     <h2 id="endTitle"></h2>
     <div class="orn" style="margin:1.2cqw 0 2cqw"><i></i></div>
@@ -89,6 +132,7 @@
 
 <script>
 const W = 1280, H = 720, cv = document.getElementById('cv'), ctx = cv.getContext('2d');
+const MP = { on: new URLSearchParams(location.search).has('mp') };   // multiplayer: the rest is in multiplayer.js
 const $ = id => document.getElementById(id);
 const img = n => Object.assign(new Image(), { src: `assets/${n}.png` });
 const art = { buggy: img('buggy'), rover: img('rover'), lander: img('lander'), crater: img('crater'), rock: img('rock') };
@@ -179,6 +223,12 @@ document.querySelectorAll('[data-act]').forEach(el => el.onclick = () => {
 });
 addEventListener('keydown', e => {
   keys[e.code] = true;
+  if (MP.on) {                                            // multiplayer has its own screens
+    if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code) && e.target.tagName !== 'INPUT') e.preventDefault();
+    if (screen === 'play' && e.code === 'KeyE') act();
+    else if (screen === 'play' && e.code === 'Escape') MP.leave();
+    return;
+  }
   if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) e.preventDefault();
   if (screen === 'play' && (e.code === 'KeyE' || e.code === 'Space' || e.code === 'Enter')) act();
   else if (screen === 'play' && e.code === 'Escape') show('menu');
@@ -190,6 +240,7 @@ $('prompt').onclick = () => act();
 
 const near = (o, d) => Math.hypot(b.x - o.x, b.y - o.y) < d;
 function act() {                                         // pick up the sample, or board the lander with it
+  if (MP.on) return MP.act();
   if (!hasSample && near(ROVER, 190)) { hasSample = true; b.v = 0; }
   else if (hasSample && near(LANDER, 330)) finish(true);
 }
@@ -225,7 +276,7 @@ function update(dt) {
     const d = Math.hypot(b.x - r.x, b.y - r.y), min = r.r + 30;
     if (d < min && d > 0) { b.x = r.x + (b.x - r.x) / d * min; b.y = r.y + (b.y - r.y) / d * min; b.v *= 0.4; }
   }
-  for (const o of [[LANDER, 150], [ROVER, 70]]) {
+  for (const o of (MP.on ? MP.obstacles() : [[LANDER, 150], [ROVER, 70]])) {
     const d = Math.hypot(b.x - o[0].x, b.y - o[0].y), min = o[1] + 30;
     if (d < min && d > 0) { b.x = o[0].x + (b.x - o[0].x) / d * min; b.y = o[0].y + (b.y - o[0].y) / d * min; b.v *= 0.4; }
   }
@@ -234,7 +285,7 @@ function update(dt) {
   if (!last || Math.hypot(last[0] - b.x, last[1] - b.y) > 18) { trail.push([b.x, b.y, b.ang]); if (trail.length > 900) trail.shift(); }
   if (Math.abs(b.v) > 70 && Math.random() < 0.5) dust.push({ x: b.x - Math.sin(b.ang) * 40 + (Math.random() - 0.5) * 40, y: b.y + Math.cos(b.ang) * 40 + (Math.random() - 0.5) * 40, a: 0.5, r: 5 });
   for (const d of dust) { d.a -= dt * 0.5; d.r += dt * 14; } dust = dust.filter(d => d.a > 0);
-  o2 -= dt; if (o2 <= 0) { o2 = 0; finish(false); }
+  if (!(MP.on && MP.mode === 'mats')) { o2 -= dt; if (o2 <= 0) { o2 = 0; if (MP.on) MP.out(); else finish(false); } }
   cam.x += (b.x + Math.sin(b.ang) * b.v * 0.45 - cam.x) * Math.min(1, dt * 4); cam.y += (b.y - Math.cos(b.ang) * b.v * 0.45 - cam.y) * Math.min(1, dt * 4);
 
   // heads-up display
@@ -247,6 +298,7 @@ function update(dt) {
     : 'Find the lost rover<small>follow its wheel tracks from the lander</small>';
   const pr = !hasSample && near(ROVER, 190) ? 'Press E to take the sample' : hasSample && near(LANDER, 330) ? 'Press E to load the sample into the lander' : '';
   $('prompt').style.display = pr ? 'block' : 'none'; $('prompt').textContent = pr;
+  if (MP.on) MP.hud();
 }
 
 // ---------- drawing ----------
@@ -296,7 +348,8 @@ function draw(now) {
   }
   ctx.imageSmoothingEnabled = true;
   // lander and rover
-  if (vis(LANDER.x, LANDER.y, 700)) { shadow(LANDER.x, LANDER.y, 150, 520); sprite(art.lander, LANDER.x, LANDER.y, 420, 0); }
+  if (!MP.on && vis(LANDER.x, LANDER.y, 700)) { shadow(LANDER.x, LANDER.y, 150, 520); sprite(art.lander, LANDER.x, LANDER.y, 420, 0); }
+  if (MP.on) MP.world(vis, now);
   if (vis(ROVER.x, ROVER.y, 200)) {
     shadow(ROVER.x, ROVER.y, 60, 200);
     sprite(art.rover, ROVER.x, ROVER.y, 170, ROVER.ang);
@@ -310,6 +363,7 @@ function draw(now) {
   ctx.restore();
 
   drawNight(ox, oy, now);
+  if (MP.on) MP.overlay(ox, oy, now);
   // Earth hanging low over the horizon, glowing at the edge of the view
   { const ex = W - 74, ey = 150, er = 40, g = ctx.createRadialGradient(ex, ey, er * 0.8, ex, ey, er * 2.2);
     g.addColorStop(0, 'rgba(120,180,255,.35)'); g.addColorStop(1, 'rgba(120,180,255,0)'); ctx.fillStyle = g; ctx.beginPath(); ctx.arc(ex, ey, er * 2.2, 0, 7); ctx.fill();
@@ -346,7 +400,7 @@ function drawNight(ox, oy, now) {
 let last = performance.now();
 function loop(now) {
   const dt = Math.max(0, Math.min(0.05, (now - last) / 1000)); last = now;
-  if (screen === 'play') update(dt);
+  if (screen === 'play') { if (!MP.on || MP.tick(dt)) update(dt); else if (MP.on) MP.hud(); }
   else if (screen === 'menu') { cam.x = LANDER.x + 200 + Math.sin(now / 5000) * 200; cam.y = LANDER.y - 120; }
   draw(now);
   requestAnimationFrame(loop);
@@ -354,5 +408,6 @@ function loop(now) {
 requestAnimationFrame(loop);
 if (STORY) { try { localStorage.setItem('hazlaoum.story', 'rescue'); } catch (e) {} document.querySelector('#brief h2').textContent = 'The last mission'; show('brief'); }
 </script>
+<script src="multiplayer.js"></script>
 </body>
 </html>

@@ -6,7 +6,16 @@ A 2D browser game made for the NASA Space Apps 2026 challenge *Space Mission Des
 
 ## What is in it
 
-The main menu has **Single player** (the story), **Multiplayer** (coming soon) and **Settings** (volume and fullscreen).
+The main menu has **Single player** (the story), **Multiplayer** and **Settings** (volume and fullscreen).
+
+- **Multiplayer, Moon challenges** (`moon/multiplayer.js`): up to 4 players. Servers are listed in order (Server 1, 2, ...);
+  join one or create your own. GitHub Pages cannot run a game server, so the player who creates a server hosts it in their
+  own browser and the others connect straight to it (peer to peer, through free public relays with the Trystero library).
+  - **Challenge 1, race to the rover:** each player starts at their own spacecraft. Take a sample from the rover and bring it
+    back first. The board shows how far each opponent is from the rover, then from their own spacecraft.
+  - **Challenge 2, materials hunt:** 2 minutes on one map. Materials lie 100 to 500 m apart; rarer ones are worth more
+    (Moon rock 10, water ice 25, helium-3 crystal 50, meteorite gold 100). The highest score wins.
+  - Open `moon/index.html?mp=local` to test with several tabs on one computer, without the internet.
 
 - **Single player, the story** (`story/`): Mr. Hazalqoum is called for a mission. Build a spacecraft that passes the test and launch it.
   After leaving the atmosphere, a solar flare knocks out the power: run to the shelter room, find three batteries in the dark to wake
