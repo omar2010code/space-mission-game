@@ -28,7 +28,11 @@ const clamp = (v, a = 0, b = 1) => Math.max(a, Math.min(b, v)), ease = t => t * 
 let ac, master, rumbleGain;
 function audio() {
   if (ac) { if (ac.state === 'suspended') ac.resume(); return ac; }
-  try { ac = new AudioContext(); master = ac.createGain(); master.gain.value = (() => { try { const v = JSON.parse(localStorage.getItem('hazlaoum') || '{}').volume; return (v === undefined ? 5 : v) / 10; } catch (e) { return 0.5; } })();   // the volume from Settings master.connect(ac.destination); } catch (e) { ac = null; }
+  try {
+    ac = new AudioContext(); master = ac.createGain();
+    master.gain.value = (() => { try { const v = JSON.parse(localStorage.getItem('hazlaoum') || '{}').volume; return (v === undefined ? 5 : v) / 10; } catch (e) { return 0.5; } })();   // the volume from Settings
+    master.connect(ac.destination);
+  } catch (e) { ac = null; }
   return ac;
 }
 function beep(freq, len, vol, type = 'square', when = 0) {
