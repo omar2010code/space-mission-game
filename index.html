@@ -25,6 +25,7 @@
   .item small { display:block; font:1.15cqw ui-monospace, Consolas, monospace; color:#6b6f8f; letter-spacing:.05cqw; }
   .item.sel small { color:#8f93b8; }
   h2 { font-weight:normal; font-size:4cqw; color:#f3efe6; margin:0 0 1cqw; }
+  .item b { font-weight:normal; color:#f3efe6; display:inline-block; min-width:4cqw; }
   .how { width:60%; text-align:left; font-size:1.6cqw; line-height:1.5; color:#c9c7e4; }
   .how b { color:#f3efe6; font-weight:normal; }
   .how li { margin-bottom:.7cqw; }
@@ -41,25 +42,20 @@
     <div class="title">HAZLAOUM</div>
     <div class="tagline">a space mission design game</div>
     <div class="orn"><i></i></div>
-    <div class="item sel" data-go="story/index.html">Play<small>the story · Mr. Hazalqoum is called for a mission</small></div>
-    <div class="item" data-go="rocket/index.html">Rocket workshop<small>free play · design and launch your rocket</small></div>
-    <div class="item" data-go="hazlaoum/index.html">Float in orbit<small>free play · explore the three rooms in zero gravity</small></div>
-    <div class="item" data-go="moon/index.html">Moon rescue<small>free play · drive the buggy and bring back the rover's sample</small></div>
-    <div class="item" data-act="how">How to play</div>
+    <div class="item sel" data-go="story/index.html">Single player<small>Mr. Hazalqoum is called for a mission</small></div>
+    <div class="item" data-act="multi">Multiplayer<small>coming soon</small></div>
+    <div class="item" data-act="settings">Settings</div>
     <div class="foot">↑ ↓ select · Enter confirm · NASA Space Apps 2026</div>
   </div>
 
-  <div class="screen" id="how">
-    <h2>How to play</h2>
+  <div class="screen" id="settings">
+    <div class="disc"></div>
+    <h2>Settings</h2>
     <div class="orn" style="margin:1.4cqw 0 2.4cqw"><i></i></div>
-    <ol class="how">
-      <li><b>Play: the story.</b> Build a spacecraft that passes the test, launch it, and deal with what happens on the way. Your place in the story is saved.</li>
-      <li><b>Chapter 1: the rocket workshop.</b> Pick a mission, then build a rocket from the nose down. Every part costs money, adds mass and uses or makes electricity. Watch the gauges and press Launch. The mission report tells you which step failed, and why.</li>
-      <li><b>Chapter 2: adrift in orbit.</b> Once your mission succeeds, board the spacecraft. Push off with WASD or the arrow keys and float through the hatches. Press M for the ship map.</li>
-      <li><b>Chapter 3: moon rescue.</b> Drive the buggy along the marked road, follow the lost rover's wheel tracks, and bring its sample back to the lander before the oxygen runs low.</li>
-      <li>New to rockets? Start with the <b>Tutorial</b> in the workshop.</li>
-    </ol>
-    <div class="item sel" data-act="back">Back</div>
+    <div class="item sel" data-act="volume">Volume &nbsp;<span data-step="-1">&nbsp;‹&nbsp;</span><b id="volVal">5</b><span data-step="1">&nbsp;›&nbsp;</span></div>
+    <div class="item" data-act="fullscreen">Fullscreen &nbsp;<b id="fsVal">Off</b></div>
+    <div class="item" data-act="back">Back</div>
+    <div class="foot">↑ ↓ select · ← → change · Enter confirm · Esc back</div>
   </div>
   <div id="fade"></div>
 </div>
@@ -71,25 +67,37 @@ const stars = Array.from({ length: 140 }, (_, i) => [(i * 197.3) % W, (i * 89.7 
 const drifter = { x: 1150, y: 120, vx: -11, vy: 6, rot: 0.3 };
 
 let screen = 'menu';
-const sel = { menu: 0, how: 0 };
+const sel = { menu: 0, settings: 0 };
+// Settings are shared with the rest of the game (the ship and the cutscenes read the same saved volume).
+const save = { volume: 5 };
+try { Object.assign(save, JSON.parse(localStorage.getItem('hazlaoum') || '{}')); } catch (e) {}
+const persist = () => { try { localStorage.setItem('hazlaoum', JSON.stringify(save)); } catch (e) {} };
+function refreshSettings() { document.getElementById('volVal').textContent = save.volume; document.getElementById('fsVal').textContent = document.fullscreenElement ? 'On' : 'Off'; }
+document.addEventListener('fullscreenchange', refreshSettings);
+let ac;
+function tick() { try { ac = ac || new AudioContext(); const o = ac.createOscillator(), g = ac.createGain(), t = ac.currentTime; o.frequency.value = 660; g.gain.setValueAtTime(0.2 * save.volume / 10, t); g.gain.linearRampToValueAtTime(0, t + 0.12); o.connect(g).connect(ac.destination); o.start(t); o.stop(t + 0.12); } catch (e) {} }
 const items = s => [...document.querySelectorAll(`#${s} .item`)];
 const highlight = s => items(s).forEach((el, i) => el.classList.toggle('sel', i === sel[s]));
 function show(s) { screen = s; document.querySelectorAll('.screen').forEach(el => el.classList.toggle('on', el.id === s)); highlight(s); }
-function activate(el) {
+function activate(el, step = 0) {
   if (el.dataset.go) { document.getElementById('fade').style.opacity = 1; setTimeout(() => location.href = el.dataset.go, 400); }
-  else if (el.dataset.act === 'how') show('how');
+  else if (el.dataset.act === 'settings') { sel.settings = 0; refreshSettings(); show('settings'); }
+  else if (el.dataset.act === 'volume') { save.volume = step ? Math.max(0, Math.min(10, save.volume + step)) : (save.volume + 1) % 11; persist(); refreshSettings(); tick(); }
+  else if (el.dataset.act === 'fullscreen' && !step) (document.fullscreenElement ? document.exitFullscreen() : document.getElementById('stage').requestFullscreen()).catch(() => {});
   else if (el.dataset.act === 'back') show('menu');
 }
-for (const s of ['menu', 'how']) items(s).forEach((el, i) => {
+for (const s of ['menu', 'settings']) items(s).forEach((el, i) => {
   el.addEventListener('pointerenter', () => { sel[s] = i; highlight(s); });
-  el.addEventListener('click', () => activate(el));
+  el.addEventListener('click', e => activate(el, +(e.target.dataset.step || 0)));
 });
 addEventListener('keydown', e => {
   const list = items(screen), n = list.length;
   if (e.code === 'ArrowUp' || e.code === 'KeyW') sel[screen] = (sel[screen] + n - 1) % n;
   else if (e.code === 'ArrowDown' || e.code === 'KeyS') sel[screen] = (sel[screen] + 1) % n;
   else if (e.code === 'Enter' || e.code === 'Space') { e.preventDefault(); activate(list[sel[screen]]); return; }
-  else if (e.code === 'Escape' && screen === 'how') { show('menu'); return; }
+  else if (e.code === 'Escape' && screen === 'settings') { show('menu'); return; }
+  else if (screen === 'settings' && (e.code === 'ArrowLeft' || e.code === 'KeyA')) { activate(list[sel[screen]], -1); return; }
+  else if (screen === 'settings' && (e.code === 'ArrowRight' || e.code === 'KeyD')) { activate(list[sel[screen]], 1); return; }
   else return;
   e.preventDefault(); highlight(screen);
 });

@@ -105,6 +105,7 @@ const ROOMS = {
 };
 const visited = new Set();
 const flareImg = img('bg_flare.png');
+const dark = document.createElement('canvas'); dark.width = 1024; dark.height = 572; const dk = dark.getContext('2d');
 let mapOpen = false;
 
 // ---------- settings + sound ----------
@@ -197,7 +198,7 @@ addEventListener('keydown', e => {
   keys[e.code] = true;
   if (fade.dir || e.repeat && state !== 'settings') return;
   if (state === 'play') {
-    if (story) storyKey(e);
+    if (story && storyKey(e)) return;
     if (e.code === 'KeyM') mapOpen = !mapOpen;
     else if (e.code === 'Escape') { if (mapOpen) mapOpen = false; else if (story) location.href = '../index.html'; else fadeThrough(() => show('menu')); }
     return;
@@ -305,6 +306,13 @@ function beep(freq, len, vol, type = 'square') {
   o.type = type; o.frequency.value = freq; g.gain.setValueAtTime(vol, t); g.gain.setValueAtTime(vol, t + len * 0.8); g.gain.linearRampToValueAtTime(0, t + len);
   o.connect(g).connect(master); o.start(t); o.stop(t + len);
 }
+function siren(len = 0.8, vol = 0.16) {                  // the warning alarm: a rising "whoop". Built the same simple way as beep(), which is known to play everywhere
+  if (!audio()) return;
+  const o = ac.createOscillator(), g = ac.createGain(), t = ac.currentTime;
+  o.type = 'square'; o.frequency.setValueAtTime(330, t); o.frequency.linearRampToValueAtTime(820, t + len * 0.9);
+  g.gain.setValueAtTime(vol, t); g.gain.setValueAtTime(vol, t + len * 0.9); g.gain.linearRampToValueAtTime(0, t + len);
+  o.connect(g).connect(master); o.start(t); o.stop(t + len);
+}
 function boom() {
   if (!audio()) return;
   const n = ac.sampleRate * 2.5, buf = ac.createBuffer(1, n, ac.sampleRate), d = buf.getChannelData(0);
@@ -312,7 +320,21 @@ function boom() {
   const src = ac.createBufferSource(), lp = ac.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 300;
   src.buffer = buf; src.connect(lp).connect(master); src.start();
 }
+// The sound that plays as the scene moves inside the ship. It waits until the browser lets sound play (the first key press).
+const INSIDE = fetch('assets/inside.mp3').then(r => r.arrayBuffer()).catch(() => null);
+let insidePending = false, insideBuf = null;
+function playInside() {
+  if (!insidePending || !audio()) return;
+  if (ac.state === 'suspended') ac.resume();
+  if (ac.state !== 'running') return;
+  if (!insideBuf) { insideBuf = 'loading'; INSIDE.then(d => d && ac.decodeAudioData(d)).then(b => { insideBuf = b || null; playInside(); }).catch(() => { insideBuf = null; }); return; }
+  if (insideBuf === 'loading') return;
+  const src = ac.createBufferSource(), g = ac.createGain(); src.buffer = insideBuf; g.gain.value = save.volume ? Math.max(0.8, Math.min(1.4, save.volume / 5)) : 0;
+  src.connect(g).connect(ac.destination); src.start(); insidePending = false;
+}
+addEventListener('keydown', playInside, true); addEventListener('pointerdown', playInside, true);
 function startStory() {
+  insidePending = true; playInside();
   story = { phase: 'run', t: 0, left: FLARE_IN, beepT: 0, line: 0, lineT: 0 };
   mapOpen = false; enterRoom('control', ROOMS.control.start, [0, 30]); show('play');
   $('hud').textContent = 'WASD / arrow keys to push off · the shelter is two hatches down · M for map';
@@ -322,18 +344,156 @@ function updateStory(dt) {
   const st = story; st.t += dt;
   if (st.phase === 'run') {
     st.left -= dt; st.beepT -= dt;
-    if (room === ROOMS.shelter && st.left > 4) st.left = 4;        // he made it: the flare arrives moments later
-    if (st.beepT <= 0) { st.beepT = st.left < 10 ? 0.45 : 0.9; beep(880, 0.18, 0.12); setTimeout(() => beep(660, 0.18, 0.12), 200); }
+    if (room === ROOMS.shelter && st.left > 8) st.left = 8;        // he made it: the flare arrives a few seconds later
+    if (st.beepT <= 0) { const fast = st.left < 10; st.beepT = fast ? 0.55 : 1.0; siren(fast ? 0.45 : 0.8); }   // faster as the flare gets close
     if (st.left <= 0) { st.phase = room === ROOMS.shelter ? 'flare' : 'fail'; st.t = 0; boom(); }
   } else if (st.phase === 'flare' && st.t > 3.2) { st.phase = 'dark'; st.t = 0; st.lineT = 0; thump(60, 1.2, 0.5); $('hud').textContent = 'Enter: continue'; }
   else if (st.phase === 'dark') st.lineT += dt;
+  else if (st.phase === 'fix' && st.allT !== undefined && st.t - st.allT > 1.2) {   // all four wires in: the power comes back
+    st.phase = 'restored'; st.t = 0; boom(); $('hud').textContent = 'Enter to continue';
+  }
+  else if (st.phase === 'restored' && st.t > 6) toMoon();
+  else if (st.phase === 'awake') {                                      // each line stays for its own number of seconds
+    if (st.talk === undefined) { st.talk = 0; st.talkT = 0; speak(0); }
+    st.talkT += dt;
+    const talking = voice && performance.now() < voice.until && st.talkT < 90;          // let a voice finish its line
+    if (st.talkT >= TALK[st.talk][2] && !talking) { st.talk++; st.talkT = 0; speak(st.talk); if (st.talk >= TALK.length) fixGo(); }
+  }
+  else if (st.phase === 'seek') for (const c of st.cells) {             // float over a battery to pick it up
+    if (!c.got && ROOMS[c.room] === room && Math.hypot(P.x - c.x, P.y - c.y) < 34) { c.got = true; st.carry++; thump(320, 0.12, 0.4); beep(880, 0.08, 0.06, 'sine'); }
+  }
+  else if (st.phase === 'boot') { const n = Math.floor(st.t / 0.7); if (n !== st.bootN && n < BOOT.length) { st.bootN = n; beep(440 + n * 60, 0.05, 0.05, 'sine'); } if (st.t > BOOT.length * 0.7 + 1) { st.phase = 'awake'; st.t = 0; beep(660, 0.3, 0.08, 'sine'); } }
 }
-function storyKey(e) {                                 // Enter / Space: next line, retry, or finish
-  if (e.code !== 'Enter' && e.code !== 'Space') return;
+// Alkabir, the ship's AI, lives in the computer cabinet in the control room. With the main power gone, its computer
+// needs three backup batteries. They are lying in random corners of the rooms, unlit: Hazalqoum finds them, carries them
+// to the cabinet and puts them in, then starts the computer.
+const SPOTS = { control: [[300,452],[708,456],[790,362],[736,246],[226,408]], comms: [[330,482],[696,482],[250,388],[746,412],[376,200]], shelter: [[290,412],[742,402],[700,432],[600,216]] };   // all in the corners of the rooms
+const AI = [290, 276], BOOT = ['ALKABIR CORE', 'internal batteries ........ 3 / 3', 'memory ..................... OK', 'radio ................ NO SIGNAL', 'main power ............. OFFLINE', 'waking up ...'];
+// The conversation once Alkabir is awake: [who, line, seconds on screen]. A null speaker is a silence (Alkabir scanning).
+const TALK = [
+  ['HAZALQOUM', 'Hello, hello, are you awake?', 2],
+  ['ALKABIR', 'I am Alkabir, with you.', 3],
+  ['HAZALQOUM', 'What should I do now...?', 2],
+  ['ALKABIR', 'Wait, I will make a scan of the spaceship.', 3],
+  [null, '', 2],
+  ['ALKABIR', 'All of the ship is out of electricity except me.', 3],
+  ['HAZALQOUM', 'OMG, I am about to die... Forgive me, mommy: I used to take money from your purse to play in the cyber with the low-lives.', 11],
+  ['ALKABIR', 'Shut up, little donkey. Listen to what I am about to say.', 4],
+  ['ALKABIR', 'Listen, little donkey: go activate the emergency batteries, and turn back the electricity.', 5],
+  ['ALKABIR', 'The electrical problem is in the communication room. The flare burned the wires: go there and connect them again.', 5],   // no recording yet: shown for its seconds
+];
+// One second of silence between one voice and the next (the scan is already a silence of its own).
+for (let i = TALK.length - 1; i > 0; i--) if (TALK[i][0] && TALK[i - 1][0]) TALK.splice(i, 0, [null, '', 1, 'gap']);
+// Recorded voices for the eight spoken lines, in order. They play through the same sound system as the beeps and the alarm
+// (decoded into memory, not <audio> elements, which some browsers such as Brave refuse to start on their own).
+// A line stays up for its seconds, or until its voice finishes if that is longer.
+const VOICE_FILES = 8;                                // recordings exist for the first eight spoken lines
+const VOICE_DATA = TALK.filter(l => l[0]).slice(0, VOICE_FILES).map((_, i) => fetch(`assets/voice/line${i + 1}.mp3`).then(r => r.arrayBuffer()).catch(() => null));
+const VOICE_BUF = [];
+let voice = null, voicesLoading = false;
+function loadVoices() {
+  if (voicesLoading || !audio()) return; voicesLoading = true;
+  VOICE_DATA.forEach((p, i) => p.then(d => d && ac.decodeAudioData(d)).then(buf => { VOICE_BUF[i] = buf; }).catch(() => {}));
+}
+// Browsers block sound until the first key or click on the page. On that first one, wake the sound and get the voices ready.
+function unlock() { audio(); if (ac && ac.state === 'suspended') ac.resume(); loadVoices(); }
+addEventListener('keydown', unlock, true); addEventListener('pointerdown', unlock, true);
+function speak(i) {                                    // i: index into TALK
+  if (voice) { try { voice.src.stop(); } catch (e) {} voice = null; }
+  if (i >= TALK.length || !TALK[i][0] || !audio()) return;
+  loadVoices();
+  const buf = VOICE_BUF[TALK.slice(0, i).filter(l => l[0]).length]; if (!buf) return;
+  const src = ac.createBufferSource(), g = ac.createGain();
+  src.buffer = buf; g.gain.value = save.volume ? Math.max(0.8, Math.min(1.4, save.volume / 5)) : 0;   // clearly audible unless the volume setting is 0
+  src.connect(g).connect(ac.destination); src.start();
+  voice = { src, until: performance.now() + buf.duration * 1000 };
+}
+// The wiring panel sits beside the transmitter rack in the communication room. The flare cut its four wires:
+// drag each wire from the left to the socket of the same colour on the right (or press its number, then the socket's).
+const PANEL = [654, 250];
+const WIRES = [['red', '#ff4a4a'], ['yellow', '#ffd23a'], ['blue', '#3aa0ff'], ['green', '#3ad27a']];
+const WL = 330, WR = 694, wy = i => 196 + i * 62;          // where the wire ends and the sockets are drawn
+const nearPanel = () => room === ROOMS.comms && Math.hypot(P.x - PANEL[0], P.y - PANEL[1]) < 105;
+const shuffle = a => { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+function fixGo() {
+  const st = story; st.phase = 'fixgo'; st.t = 0;
+  st.left = shuffle([0, 1, 2, 3]); st.right = shuffle([0, 1, 2, 3]); st.done = [false, false, false, false]; st.wdrag = null; st.pick = null; st.zap = undefined; st.allT = undefined;
+  $('hud').textContent = 'WASD / arrow keys to float · M for map · E to use';
+  try { localStorage.setItem('hazlaoum.story', 'alkabir'); } catch (e) {}
+}
+function connect(li, ri) {                              // li, ri: rows on the left and the right
+  const st = story, c = st.left[li];
+  if (st.done[c]) return;
+  if (st.right[ri] === c) {
+    st.done[c] = true; thump(300, 0.12, 0.4); beep(700 + c * 90, 0.12, 0.07, 'sine');
+    if (st.done.every(Boolean)) { st.allT = st.t; setTimeout(() => { beep(520, 0.15, 0.08, 'sine'); beep(780, 0.25, 0.08, 'sine', 0.15); }, 200); }
+  } else { st.zap = st.t; beep(120, 0.18, 0.12, 'sawtooth'); }   // wrong colour: a spark, and the wire springs back
+}
+const toCv = e => { const r = cv.getBoundingClientRect(); return [(e.clientX - r.left) / r.width * W, (e.clientY - r.top) / r.height * H]; };
+cv.addEventListener('pointerdown', e => {
+  if (!story || story.phase !== 'fix') return;
+  const [x, y] = toCv(e);
+  for (let i = 0; i < 4; i++) if (Math.hypot(x - WL, y - wy(i)) < 30 && !story.done[story.left[i]]) story.wdrag = { i, x, y };
+});
+addEventListener('pointermove', e => { if (story && story.wdrag) [story.wdrag.x, story.wdrag.y] = toCv(e); });
+addEventListener('pointerup', e => {
+  if (!story || !story.wdrag) return;
+  const [x, y] = toCv(e), d = story.wdrag; story.wdrag = null;
+  for (let j = 0; j < 4; j++) if (Math.hypot(x - WR, y - wy(j)) < 34) connect(d.i, j);
+});
+const nearAI = () => room === ROOMS.control && Math.hypot(P.x - 335, P.y - 290) < 100;
+function seek() {
+  const all = Object.entries(SPOTS).flatMap(([r, list]) => list.map(([x, y]) => ({ room: r, x, y, got: false })));
+  for (let i = all.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [all[i], all[j]] = [all[j], all[i]]; }
+  story.cells = all.slice(0, 3); story.carry = 0; story.inst = 0;      // three batteries in three random places
+  story.phase = 'seek'; story.t = 0; $('hud').textContent = 'WASD / arrow keys to float · M for map · E to use'; try { localStorage.setItem('hazlaoum.story', 'alkabir'); } catch (e) {} }
+function storyKey(e) {                                 // E: use · 1 to 5: breakers · Enter / Space: next line, retry, or finish
   const st = story;
+  if (st.phase === 'fixgo' && e.code === 'KeyE' && nearPanel() && !mapOpen) { st.phase = 'fix'; st.t = 0; P.vx = P.vy = 0; thump(180, 0.25, 0.3); return true; }
+  if (st.phase === 'fix') {
+    if (/^(Digit|Numpad)[1-4]$/.test(e.code)) {          // keyboard: the wire's number, then the socket's number
+      const n = +e.code.slice(-1) - 1;
+      if (st.pick === null) { if (!st.done[st.left[n]]) { st.pick = n; beep(500, 0.04, 0.05, 'sine'); } }
+      else { connect(st.pick, n); st.pick = null; }
+    }
+    else if (e.code === 'Escape') { st.phase = 'fixgo'; st.pick = null; }
+    return true;
+  }
+  if (st.phase === 'seek' && e.code === 'KeyE' && nearAI() && !mapOpen) {
+    if (st.carry) {                                    // put the batteries he is carrying into the cabinet
+      st.inst += st.carry; st.carry = 0; st.putT = st.t; thump(200, 0.2, 0.4); beep(520 + st.inst * 110, 0.15, 0.08, 'sine');
+    } else if (st.inst >= 3) { st.phase = 'boot'; st.t = 0; P.vx = P.vy = 0; beep(220, 0.5, 0.08, 'sine'); }
+    else thump(90, 0.15, 0.3);                         // nothing to put in yet
+    return true;
+  }
+  if (e.code !== 'Enter' && e.code !== 'Space') return false;
   if (st.phase === 'fail' && st.t > 1.5) fadeThrough(startStory);
-  else if (st.phase === 'dark' && st.lineT > 0.4) { st.line++; st.lineT = 0; if (st.line >= LINES.length) { st.phase = 'end'; st.t = 0; } else beep(st.line === LINES.length - 1 ? 520 : 300, 0.08, 0.08, 'sine'); }
+  else if (st.phase === 'dark' && st.lineT > 0.4) { st.line++; st.lineT = 0; if (st.line >= LINES.length) seek(); else beep(st.line === LINES.length - 1 ? 520 : 300, 0.08, 0.08, 'sine'); }
+  else if (st.phase === 'awake' && st.talk !== undefined && st.talkT > 0.3) st.talkT = 99;      // Enter skips to the next line
+  else if (st.phase === 'restored' && st.t > 2) toMoon();
   else if (st.phase === 'end' && st.t > 1) location.href = '../index.html';
+  return false;
+}
+function speech(col, who, text) {                       // a speech box that wraps long lines
+  ctx.font = '19px Georgia, serif'; const lines = []; let line = '';
+  for (const w of text.split(' ')) { if (ctx.measureText(line + ' ' + w).width > 660 && line) { lines.push(line); line = w; } else line = line ? line + ' ' + w : w; }
+  lines.push(line);
+  const h = 46 + lines.length * 26, y = 520 - h;
+  ctx.fillStyle = '#0b0c16ee'; ctx.fillRect(162, y, 700, h); ctx.strokeStyle = col; ctx.lineWidth = 2; ctx.strokeRect(162, y, 700, h);
+  ctx.textAlign = 'left'; ctx.fillStyle = col; ctx.font = 'bold 13px ui-monospace, Consolas, monospace'; ctx.fillText(who, 176, y + 22);
+  ctx.fillStyle = '#f3efe6'; ctx.font = '19px Georgia, serif'; lines.forEach((l, i) => ctx.fillText(l, 176, y + 50 + i * 26));
+}
+function toMoon() {                                    // the power is back: the ship turns toward the Moon
+  if (story.leaving) return; story.leaving = true;
+  try { localStorage.setItem('hazlaoum.story', 'moon'); } catch (e) {}
+  fadeThrough(() => { location.href = '../story/index.html?s=moon'; });
+}
+function cell(x, y, k) {                               // a backup battery, drawn small
+  ctx.save(); ctx.translate(Math.round(x), Math.round(y)); ctx.scale(k, k);
+  ctx.fillStyle = '#0b0c16'; ctx.fillRect(-10, -17, 20, 34); ctx.fillStyle = '#c9c7e4'; ctx.fillRect(-4, -21, 8, 5);
+  ctx.fillStyle = '#2d6b45'; ctx.fillRect(-8, -15, 16, 30); ctx.fillStyle = '#6fe39a'; ctx.fillRect(-8, -3, 16, 18);
+  ctx.fillStyle = '#ffcf5a'; ctx.beginPath(); ctx.moveTo(2, -10); ctx.lineTo(-4, 1); ctx.lineTo(0, 1); ctx.lineTo(-2, 10); ctx.lineTo(5, -2); ctx.lineTo(1, -2); ctx.fill();
+  ctx.restore();
 }
 function box(x, y, w, h, col, who, text, small) {       // a message box: radio, ship warning or speech
   ctx.fillStyle = '#0b0c16ee'; ctx.fillRect(x, y, w, h); ctx.strokeStyle = col; ctx.lineWidth = 2; ctx.strokeRect(x, y, w, h);
@@ -352,13 +512,13 @@ function drawStory() {
   const st = story, [lx, ly] = room.lamp;
   if (st.phase === 'run') {
     const k = 0.5 + 0.5 * Math.sin(st.t * (st.left < 10 ? 12 : 6.5));          // red emergency lights flash with the alarm
-    ctx.globalCompositeOperation = 'multiply'; ctx.fillStyle = `rgb(255,${Math.round(70 + 185 * (1 - k))},${Math.round(70 + 185 * (1 - k))})`; ctx.fillRect(0, 0, W, H);
+    ctx.globalCompositeOperation = 'multiply'; ctx.fillStyle = `rgb(${Math.round(120 + 135 * k)},${Math.round(18 + 34 * k)},${Math.round(18 + 34 * k)})`; ctx.fillRect(0, 0, W, H);   // always dark and red: it pulses from dim to bright, never back to normal light
     ctx.globalCompositeOperation = 'lighter'; const g = ctx.createRadialGradient(lx, ly, 2, lx, ly, 150);
     g.addColorStop(0, `rgba(255,40,40,${0.75 * k})`); g.addColorStop(1, 'rgba(255,40,40,0)'); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
     ctx.globalCompositeOperation = 'source-over';
     ctx.fillStyle = '#3a060cee'; ctx.fillRect(0, 0, W, 44); ctx.fillStyle = '#ff5f6b'; ctx.fillRect(0, 44, W, 2);
     ctx.textAlign = 'center'; ctx.fillStyle = '#ffdede'; ctx.font = 'bold 17px ui-monospace, Consolas, monospace';
-    ctx.fillText(room === ROOMS.shelter ? 'SHIP WARNING · SOLAR FLARE ARRIVING · BRACE!' : `SHIP WARNING · STRONG SOLAR FLARE INCOMING · ${Math.ceil(st.left)} s`, W / 2, 28);
+    ctx.fillText(room === ROOMS.shelter ? `SHIP WARNING · SOLAR FLARE ARRIVING · BRACE! · ${Math.ceil(st.left)} s` : `SHIP WARNING · STRONG SOLAR FLARE INCOMING · ${Math.ceil(st.left)} s`, W / 2, 28);
     if (st.t < 9 && room !== ROOMS.shelter && Math.floor(st.t / 0.35) % 6 !== 5) box(212, 56, 600, 66, '#7fd4ff', 'GROUND STATION', st.t < 4.5 ? 'Attention! Run immediately to the shelter room!' : 'I repeat: run immediately to the shelter room!');
     if (room === ROOMS.shelter) box(262, 56, 500, 66, '#6fe39a', 'HAZALQOUM', 'Made it. The thick walls will stop the radiation.');
   } else if (st.phase === 'flare') {
@@ -366,18 +526,92 @@ function drawStory() {
     if (flareImg.width) ctx.drawImage(flareImg, (Math.random() - 0.5) * sh, (Math.random() - 0.5) * sh, W, H);
     ctx.fillStyle = `rgba(255,250,235,${st.t < 0.5 ? 1 - st.t * 2 : st.t > 2.4 ? Math.min(1, (st.t - 2.4) / 0.4) : 0})`; ctx.fillRect(0, 0, W, H);
     if (st.t > 2.8) { ctx.fillStyle = `rgba(0,0,0,${Math.min(1, (st.t - 2.8) / 0.4)})`; ctx.fillRect(0, 0, W, H); }
-  } else if (st.phase === 'dark' || st.phase === 'end') {
-    const k = 0.6 + 0.4 * Math.sin(st.t * 3), [bx, by] = ROOMS.shelter.lamp, here = room === ROOMS.shelter;
-    ctx.globalCompositeOperation = 'multiply'; ctx.fillStyle = '#ff4a4a'; ctx.fillRect(0, 0, W, H); ctx.globalCompositeOperation = 'source-over';
-    const g = ctx.createRadialGradient(bx, by, 10, bx, by, here ? 200 + 30 * k : 1); g.addColorStop(0, 'rgba(3,0,0,0)'); g.addColorStop(1, 'rgba(3,0,0,.95)');
-    ctx.fillStyle = here ? g : 'rgba(3,0,0,.95)'; ctx.fillRect(0, 0, W, H);
-    if (here) { ctx.globalCompositeOperation = 'lighter'; const r = ctx.createRadialGradient(bx, by, 1, bx, by, 60); r.addColorStop(0, `rgba(255,60,60,${0.9 * k})`); r.addColorStop(1, 'rgba(255,60,60,0)'); ctx.fillStyle = r; ctx.fillRect(0, 0, W, H); ctx.globalCompositeOperation = 'source-over'; }
-    ctx.globalAlpha = 0.5; drawHaz(P.x, P.y - 6, P.rot, P.pose, 0.9); ctx.globalAlpha = 1;      // he is a dim shape in the dark
-    if (st.phase === 'dark' && st.t > 1.2) { const [who, text] = LINES[st.line]; box(162, 440, 700, 76, who === 'SHIP' ? '#ff5f6b' : '#6fe39a', who, text, 'Enter ▸'); }
-    if (st.phase === 'end') { ctx.globalAlpha = Math.min(1, st.t); card(['To be continued...'], '#f3efe6', st.t > 1 ? 'Enter: main menu' : ''); ctx.globalAlpha = 1; }
   } else if (st.phase === 'fail') {
     ctx.fillStyle = `rgba(255,250,235,${Math.max(0, 1 - st.t)})`; ctx.fillRect(0, 0, W, H);
     ctx.globalAlpha = Math.min(1, st.t / 1.2); card(['The flare hit before you', 'reached the shelter room.'], '#ff4650', st.t > 1.5 ? 'Enter: try again' : ''); ctx.globalAlpha = 1;
+  } else if (st.phase === 'restored') {                  // the power is back: normal light returns, flickering on
+    const k = Math.min(1, st.t / 1.2), flick = st.t < 1.2 && Math.random() < 0.35;
+    ctx.fillStyle = `rgba(3,0,2,${flick ? 0.8 : 0.9 * (1 - k)})`; ctx.fillRect(0, 0, W, H);
+    if (st.t > 1.3) box(212, 56, 600, 66, '#6fe39a', 'SHIP', 'Main power restored. Turning toward the Moon.');
+    if (st.t > 2) { ctx.textAlign = 'center'; ctx.fillStyle = '#8f93b8'; ctx.font = '13px ui-monospace, Consolas, monospace'; ctx.fillText('Enter ▸', W / 2, 140); }
+  } else {                                               // the power is out: dark, seek, batt, boot, awake, fixgo, fix, end
+    const k = 0.6 + 0.4 * Math.sin(st.t * 3), [bx, by] = ROOMS.shelter.lamp, inShelter = room === ROOMS.shelter, inControl = room === ROOMS.control;
+    const here = st.phase === 'seek' ? st.cells.filter(c => !c.got && ROOMS[c.room] === room) : [];
+    for (const c of here) cell(c.x, c.y + Math.sin(st.t * 2 + c.x) * 3, 1);                     // batteries drifting where they were left
+    for (let i = 0; i < (st.carry || 0); i++) cell(P.x + 20 + i * 9, P.y + 8 + i * 3, 0.7);    // the ones he is carrying
+    const aiOn = ['awake', 'end', 'boot', 'fixgo', 'fix'].includes(st.phase), torch = st.phase !== 'dark';
+    ctx.globalCompositeOperation = 'multiply'; ctx.fillStyle = '#ff4848'; ctx.fillRect(0, 0, W, H); ctx.globalCompositeOperation = 'source-over';   // no electricity: everything he can see is red
+    dk.globalCompositeOperation = 'source-over'; dk.clearRect(0, 0, W, H); dk.fillStyle = 'rgba(3,0,2,.96)'; dk.fillRect(0, 0, W, H);
+    dk.globalCompositeOperation = 'destination-out';
+    const hole = (x, y, r, a) => { const g = dk.createRadialGradient(x, y, r * 0.15, x, y, r); g.addColorStop(0, `rgba(0,0,0,${a})`); g.addColorStop(1, 'rgba(0,0,0,0)'); dk.fillStyle = g; dk.beginPath(); dk.arc(x, y, r, 0, 7); dk.fill(); };
+    if (torch) hole(P.x, P.y - 6, 150, 0.95);                              // his torch
+    if (inShelter) hole(bx, by, 190 + 25 * k, 0.8);                        // the red battery lamp
+    if (inControl && aiOn) hole(AI[0], AI[1], 300, 0.9);                   // Alkabir's blue light
+    ctx.drawImage(dark, 0, 0);
+    const glow = (x, y, r, col) => { ctx.globalCompositeOperation = 'lighter'; const g = ctx.createRadialGradient(x, y, 1, x, y, r); g.addColorStop(0, col); g.addColorStop(1, 'rgba(0,0,0,0)'); ctx.fillStyle = g; ctx.fillRect(x - r, y - r, r * 2, r * 2); ctx.globalCompositeOperation = 'source-over'; };
+    if (inShelter) glow(bx, by, 150, `rgba(255,50,50,${0.5 * k})`);
+    if (inControl && aiOn) glow(AI[0], AI[1], 170, `rgba(90,190,255,${0.5 + 0.2 * k})`);
+    else if (inControl && Math.floor(st.t * 1.5) % 2) glow(AI[0], AI[1], 16, 'rgba(90,190,255,.9)');   // a tiny standby light shows where the computer is
+    if (st.phase === 'dark') { ctx.globalAlpha = 0.5; drawHaz(P.x, P.y - 6, P.rot, P.pose, 0.9); ctx.globalAlpha = 1; if (st.t > 1.2) { const [who, text] = LINES[st.line]; box(162, 440, 700, 76, who === 'SHIP' ? '#ff5f6b' : '#6fe39a', who, text, 'Enter ▸'); } }
+    if (st.phase === 'seek') {
+      const left = 3 - st.inst - st.carry;
+      ctx.fillStyle = '#0b0c16dd'; ctx.fillRect(0, 0, W, 40); ctx.textAlign = 'center'; ctx.fillStyle = '#7fd4ff'; ctx.font = '15px ui-monospace, Consolas, monospace';
+      ctx.fillText(st.inst >= 3 ? "All three batteries are in. Start Alkabir's computer (control room)."
+        : left ? `Find the batteries around the ship: ${left} still out there` + (st.carry ? " · or take what you carry to Alkabir's computer" : '')
+        : "Take the batteries to Alkabir's computer in the control room", W / 2, 25);
+      ctx.textAlign = 'right'; ctx.fillStyle = '#6fe39a'; ctx.fillText(`carrying ${st.carry} · installed ${st.inst}/3`, W - 16, 60);
+      if (nearAI()) {
+        box(262, 440, 500, 60, '#ffcf5a', "ALKABIR'S COMPUTER", st.carry ? `Press E to put in ${st.carry === 1 ? 'the battery' : 'the batteries'}` : st.inst >= 3 ? 'Press E to start the computer' : `Needs 3 batteries: ${st.inst} of 3 are in`);
+        for (let i = 0; i < 3; i++) { ctx.strokeStyle = '#7fd4ff'; ctx.lineWidth = 2; ctx.strokeRect(690 + i * 22, 452, 16, 30); if (i < st.inst) { ctx.fillStyle = '#6fe39a'; ctx.fillRect(692 + i * 22, 454, 12, 26); } }
+      }
+    }
+    if (st.phase === 'boot') {                           // the computer's screen as it starts
+      ctx.fillStyle = '#05060cf2'; ctx.fillRect(212, 126, 600, 330); ctx.strokeStyle = '#7fd4ff'; ctx.lineWidth = 2; ctx.strokeRect(212, 126, 600, 330);
+      ctx.textAlign = 'left'; ctx.font = '17px ui-monospace, Consolas, monospace';
+      BOOT.forEach((l, i) => { if (st.t > i * 0.7) { ctx.fillStyle = i === 0 ? '#7fd4ff' : /NO SIGNAL|OFFLINE/.test(l) ? '#ff7b85' : '#6fe39a'; ctx.fillText(l.slice(0, Math.floor((st.t - i * 0.7) * 60)), 252, 180 + i * 42); } });
+    }
+    if (st.phase === 'awake' && st.talk !== undefined && st.talk < TALK.length) {
+      const [who, text] = TALK[st.talk];
+      if (who) speech(who === 'ALKABIR' ? '#7fd4ff' : '#6fe39a', who, text);
+      else if (inControl && TALK[st.talk][3] !== 'gap') { const y = 120 + (st.talkT / 2) * 380; ctx.fillStyle = 'rgba(90,190,255,.55)'; ctx.fillRect(150, y, 724, 3); ctx.fillStyle = 'rgba(90,190,255,.12)'; ctx.fillRect(150, y - 26, 724, 26); }   // he says nothing: a scan line sweeps the ship
+    }
+    if (st.phase === 'fixgo') {
+      if (room === ROOMS.comms && Math.floor(st.t * 2) % 2) glow(PANEL[0], PANEL[1] - 40, 14, 'rgba(255,200,80,.9)');   // a spark shows where the panel is
+      ctx.fillStyle = '#0b0c16dd'; ctx.fillRect(0, 0, W, 40); ctx.textAlign = 'center'; ctx.fillStyle = '#7fd4ff'; ctx.font = '15px ui-monospace, Consolas, monospace';
+      ctx.fillText(room === ROOMS.comms ? 'Find the wiring panel by the transmitter rack' : 'Go to the communication room and fix the electrical problem', W / 2, 25);
+      if (nearPanel()) box(262, 440, 500, 60, '#ffcf5a', 'WIRING PANEL', 'Press E to open the panel');
+    }
+    if (st.phase === 'fix') {                            // the wiring panel
+      const zap = st.zap !== undefined && st.t - st.zap < 0.35, all = st.done.every(Boolean);
+      ctx.fillStyle = '#05060cf2'; ctx.fillRect(232, 106, 560, 360); ctx.strokeStyle = '#ffcf5a'; ctx.lineWidth = 2; ctx.strokeRect(232, 106, 560, 360);
+      ctx.textAlign = 'center'; ctx.fillStyle = '#ffcf5a'; ctx.font = 'bold 15px ui-monospace, Consolas, monospace'; ctx.fillText('WIRING PANEL · COMMUNICATION ROOM', W / 2, 138);
+      ctx.lineCap = 'round';
+      for (let i = 0; i < 4; i++) {
+        const c = st.left[i], [, col] = WIRES[c], y = wy(i), r = st.right.indexOf(c);
+        if (st.done[c]) { ctx.strokeStyle = col; ctx.lineWidth = 9; ctx.beginPath(); ctx.moveTo(WL, y); ctx.bezierCurveTo(WL + 140, y, WR - 140, wy(r), WR, wy(r)); ctx.stroke(); }
+        else {                                            // a cut wire: a short burnt stub
+          ctx.strokeStyle = col; ctx.lineWidth = 9; ctx.beginPath(); ctx.moveTo(WL - 70, y); ctx.lineTo(WL, y); ctx.stroke();
+          ctx.fillStyle = '#c9c7e4'; ctx.fillRect(WL - 2, y - 3, 10, 6);
+        }
+        ctx.strokeStyle = col; ctx.lineWidth = 9; ctx.beginPath(); ctx.moveTo(WL - 90, y); ctx.lineTo(WL - 70, y); ctx.stroke();
+        ctx.fillStyle = st.pick === i ? '#fff' : '#8f93b8'; ctx.font = '13px ui-monospace, Consolas, monospace'; ctx.fillText(String(i + 1), WL - 108, y + 5);
+      }
+      for (let j = 0; j < 4; j++) {                       // the sockets on the right
+        const c = st.right[j], [, col] = WIRES[c], y = wy(j);
+        ctx.fillStyle = '#12142b'; ctx.fillRect(WR - 4, y - 16, 44, 32); ctx.strokeStyle = col; ctx.lineWidth = 3; ctx.strokeRect(WR - 4, y - 16, 44, 32);
+        ctx.fillStyle = st.done[c] ? col : '#05060c'; ctx.beginPath(); ctx.arc(WR + 18, y, 7, 0, 7); ctx.fill();
+        ctx.fillStyle = '#8f93b8'; ctx.font = '13px ui-monospace, Consolas, monospace'; ctx.fillText(String(j + 1), WR + 62, y + 5);
+      }
+      if (st.wdrag) {                                     // the wire being dragged
+        const c = st.left[st.wdrag.i], y = wy(st.wdrag.i);
+        ctx.strokeStyle = WIRES[c][1]; ctx.lineWidth = 9; ctx.beginPath(); ctx.moveTo(WL, y); ctx.bezierCurveTo(WL + 100, y, st.wdrag.x - 100, st.wdrag.y, st.wdrag.x, st.wdrag.y); ctx.stroke();
+      }
+      if (zap) { ctx.fillStyle = 'rgba(255,240,180,.25)'; ctx.fillRect(232, 106, 560, 360); }
+      ctx.lineCap = 'butt';
+      ctx.fillStyle = zap ? '#ff5f6b' : all ? '#6fe39a' : '#8f93b8'; ctx.font = '16px Georgia, serif';
+      ctx.fillText(zap ? 'Zap! Wrong socket: match the colours.' : all ? 'All wires connected.' : st.pick !== null ? `Wire ${st.pick + 1} picked: now press the number of its socket.` : 'Drag each wire to the socket of the same colour (or press its number, then the socket\'s).', W / 2, 444);
+    }
+    if (st.phase === 'end') { ctx.globalAlpha = Math.min(1, st.t); card(['To be continued...'], '#f3efe6', st.t > 1 ? 'Enter: main menu' : ''); ctx.globalAlpha = 1; }
   }
 }
 
@@ -430,6 +664,12 @@ function drawMap() {
     ctx.strokeStyle = '#3a4060'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(592, cy); ctx.lineTo(640, cy); ctx.stroke();
     ctx.textAlign = 'left'; ctx.fillStyle = here ? '#7fd4ff' : seen ? '#f3efe6' : '#6b6f8f'; ctx.font = '16px Georgia, serif';
     ctx.fillText(seen || story ? r.map.label : '? ? ?', 648, cy + 5);
+    if (key === 'comms' && story && story.phase === 'fixgo') { ctx.fillStyle = '#ffcf5a'; ctx.font = '13px ui-monospace, Consolas, monospace'; ctx.fillText('◀ WIRING PANEL', 648, cy + 26); }
+    if (story && story.phase === 'seek') {
+      const n = story.cells.filter(c => !c.got && c.room === key).length; ctx.font = '13px ui-monospace, Consolas, monospace';
+      ctx.fillStyle = '#7fd4ff'; if (key === 'control') ctx.fillText('◀ ALKABIR', 648, cy + 26);
+      if (n) { ctx.fillStyle = '#6fe39a'; ctx.fillText(`${n} ${n === 1 ? 'battery' : 'batteries'} here`, 648 + (key === 'control' ? 100 : 0), cy + 26); }
+    }
     if (key === 'shelter' && story && story.phase === 'run') { ctx.fillStyle = '#ff7b85'; ctx.font = '13px ui-monospace, Consolas, monospace'; ctx.fillText('◀ RUN HERE', 648, cy + 26); }
     if (here) cur = [512, cy];
   }
@@ -458,7 +698,7 @@ function loop(now) {
   updateFade(dt);
   if (state === 'play') {
     if (mapOpen) { P.t += dt; drawPlay(); drawMap(); }                // the game pauses while the map is open
-    else { if (story) updateStory(dt); if (!story || !['flare', 'fail', 'end'].includes(story.phase)) updatePlayer(dt); roomTitleT += dt; drawPlay(); if (story) drawStory(); }
+    else { if (story) updateStory(dt); if (!story || !['flare', 'fail', 'end', 'boot', 'fix', 'restored'].includes(story.phase)) updatePlayer(dt); roomTitleT += dt; drawPlay(); if (story) drawStory(); }
   } else drawMenu(dt);
   requestAnimationFrame(loop);
 }
@@ -467,6 +707,7 @@ requestAnimationFrame(loop);
 // Arriving from a successful launch in the rocket workshop: skip the title and go straight aboard.
 if (new URLSearchParams(location.search).has('from')) activate('start');
 if (new URLSearchParams(location.search).get('story') === 'flare') startStory();
+if (new URLSearchParams(location.search).get('story') === 'alkabir') { startStory(); enterRoom('shelter', [512, 300], [0, 0]); seek(); }   // continue after the blackout
 </script>
 </body>
 </html>

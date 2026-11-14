@@ -6,8 +6,12 @@ A 2D browser game made for the NASA Space Apps 2026 challenge *Space Mission Des
 
 ## What is in it
 
-- **Play, the story** (`story/`): Mr. Hazalqoum is called for a mission. Build a spacecraft that passes the test, watch it leave
-  the atmosphere, then run to the shelter room before a solar flare hits and the power goes out. The story is still being written.
+The main menu has **Single player** (the story), **Multiplayer** (coming soon) and **Settings** (volume and fullscreen).
+
+- **Single player, the story** (`story/`): Mr. Hazalqoum is called for a mission. Build a spacecraft that passes the test and launch it.
+  After leaving the atmosphere, a solar flare knocks out the power: run to the shelter room, find three batteries in the dark to wake
+  the ship's AI, Alkabir, then reconnect the burned wires in the communication room. The ship turns to the Moon and lands, the last
+  mission recovers the lost rover's sample, and the rocket lifts off for home. The game's chapters below are the parts of this story.
 - **Chapter 1, the rocket workshop** (`rocket/`): pick a mission (Orbit and home, then Moon landing), build a rocket by dragging parts, and launch it.
   The spacecraft is three rooms: the Control room, the Communication room and Life support & shelter. When the design is complete (CML 4)
   it takes a streamlined, shuttle-style launch shape: the rooms become a winged spacecraft on one big fuel tank with boosters on its sides.

@@ -72,7 +72,7 @@
         <li>There is no road. The rover left the lander on its own, so follow its <b>wheel tracks</b> in the dust.</li>
         <li>Halfway there you cross into the <b>lunar night</b>. Only your headlights show the <b>rover's wheel tracks</b> in the dust.</li>
         <li>A blue <b>marker every 200 m</b> shows how far it is to the rover and which way to go. With the sample on board, the markers count down to the lander.</li>
-        <li>Take the sample and bring it back to the lander. Hazlaoum will fly it to Earth so the science team can find out why the rover broke.</li>
+        <li>Take the sample and bring it back to the lander. Hazalqoum will fly it to Earth so the science team can find out why the rover broke.</li>
         <li>You have <b>4 minutes of oxygen</b>. Wrong turns cost air. Craters slow the buggy down and boulders stop it.</li>
       </ul></div>
     <div class="item" data-act="start" style="margin-top:2cqw">Drive</div>
@@ -193,16 +193,21 @@ function act() {                                         // pick up the sample, 
   if (!hasSample && near(ROVER, 190)) { hasSample = true; b.v = 0; }
   else if (hasSample && near(LANDER, 330)) finish(true);
 }
+const STORY = new URLSearchParams(location.search).has('story');   // opened from the story: this is its last mission
 function finish(won) {
   const secs = Math.round((performance.now() - t0) / 1000), mmss = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
   $('endTitle').textContent = won ? 'Sample on board' : 'Out of oxygen';
   $('endText').innerHTML = won
-    ? `Hazlaoum seals the sample canister without opening it, loads it into the lander and lifts off for home.<br><br>
+    ? `Hazalqoum seals the sample canister without opening it, loads it into the lander and lifts off for home.<br><br>
        On Earth, the science team will examine it and find out why the rover broke down. Out here, the job was to bring it back safely, and you did.<br><br>
        <span class="mono" style="font-size:1.25cqw;color:#8f93b8">Drive time ${mmss(secs)} · oxygen left ${mmss(o2)}</span>`
     : `The oxygen warning sounds and mission control calls the buggy back to the lander on autopilot.<br><br>
        Follow the rover's wheel tracks and the blue markers every 200 m: they count down to the rover, and to the lander on the way back.`;
   $('endAgain').textContent = won ? 'Drive again' : 'Try again';
+  if (STORY && won) {                                   // the end of the story: the big lift-off animation
+    try { sessionStorage.setItem('hazlaoum.finale', JSON.stringify({ drive: mmss(secs), o2: mmss(o2) })); } catch (e) {}
+    screen = 'leaving'; location.href = '../story/index.html?s=finale'; return;
+  }
   show('end');
 }
 
@@ -347,6 +352,7 @@ function loop(now) {
   requestAnimationFrame(loop);
 }
 requestAnimationFrame(loop);
+if (STORY) { try { localStorage.setItem('hazlaoum.story', 'rescue'); } catch (e) {} document.querySelector('#brief h2').textContent = 'The last mission'; show('brief'); }
 </script>
 </body>
 </html>
