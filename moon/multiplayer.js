@@ -28,46 +28,74 @@ Object.assign(MP, {
 });
 
 // ---------- the network ----------
-let trystero = null;
+// Players find each other through three kinds of free public relays at once (Nostr, BitTorrent trackers, MQTT),
+// so it still works when a network blocks one of them. Every player has their own id (PID) that travels inside
+// each message, so it does not matter which relay a message came through. Duplicates are dropped.
+const PID = Math.random().toString(36).slice(2, 10);
+const STRATS = LOCAL ? ['local'] : ['nostr', 'torrent', 'mqtt'];
+const mods = {};                                       // the loaded relay libraries, by name
+async function loadStrats() {
+  if (LOCAL) return ['local'];
+  const ok = [];
+  await Promise.all(STRATS.map(async st => {
+    try { mods[st] = mods[st] || await import(`https://cdn.jsdelivr.net/npm/trystero@0.21.4/${st}/+esm`); ok.push(st); } catch (e) { console.warn('relay type unavailable', st, e); }
+  }));
+  return ok;
+}
+function subRoom(st, id) {                             // one room on one kind of relay: send(type, msg), on(type, f(msg, peer))
+  if (st === 'local') return localRoom(id);
+  const r = mods[st].joinRoom({ appId: APP }, id), acts = {}, handlers = {}, joinF = [], leaveF = [];
+  const act = type => acts[type] || (acts[type] = (() => { const [send, get] = r.makeAction(type); get((d, p) => (handlers[type] || []).forEach(f => f(d, p))); return send; })());
+  r.onPeerJoin(p => joinF.forEach(f => f(p))); r.onPeerLeave(p => leaveF.forEach(f => f(p)));
+  return { send: (type, msg) => { try { act(type)(msg); } catch (e) {} }, on: (type, f) => { act(type); (handlers[type] = handlers[type] || []).push(f); },
+           onJoin: f => joinF.push(f), onLeave: f => leaveF.push(f), leave: () => { try { r.leave(); } catch (e) {} } };
+}
+let seq = 0;
 async function openRoom(id) {
-  if (LOCAL) return localRoom(id);
-  trystero = trystero || await import('https://cdn.jsdelivr.net/npm/trystero@0.21.4/nostr/+esm');
-  const r = trystero.joinRoom({ appId: APP }, id), handlers = {}, acts = {};
-  const act = type => acts[type] || (acts[type] = (() => {
-    const [send, get] = r.makeAction(type);
-    get((d, p) => (handlers[type] || []).forEach(f => f(d, p)));
-    return send;
-  })());
-  return {
-    self: trystero.selfId,
-    send: (type, d, to) => act(type)(d, to),
-    on: (type, f) => { act(type); (handlers[type] = handlers[type] || []).push(f); },
-    onJoin: f => r.onPeerJoin(f), onLeave: f => r.onPeerLeave(f), leave: () => r.leave(),
+  const strats = await loadStrats();
+  if (!strats.length) throw new Error('no relays');
+  const subs = strats.map(st => [st, subRoom(st, id)]), handlers = {}, joinF = [], leaveF = [], seen = new Set();
+  const peersOf = new Map();                           // player id -> the relay peers it is reachable through
+  const room = {
+    self: PID,
+    send: (type, v, to) => { const msg = { from: PID, to, n: ++seq, v }; for (const [, sub] of subs) sub.send(type, msg); },
+    on: (type, f) => { if (!handlers[type]) { handlers[type] = []; for (const [st, sub] of subs) sub.on(type, (msg, peer) => {
+        if (!msg || msg.from === PID || (msg.to && msg.to !== PID)) return;
+        const key = msg.from + ':' + msg.n; if (seen.has(key)) return; seen.add(key); if (seen.size > 4000) seen.clear();
+        const set = peersOf.get(msg.from) || new Set(); if (!peersOf.has(msg.from)) { peersOf.set(msg.from, set); joinF.forEach(g => g(msg.from)); } set.add(st + ':' + peer);
+        handlers[type].forEach(g => g(msg.v, msg.from));
+      }); }
+      handlers[type].push(f); },
+    onJoin: f => { joinF.push(f); for (const [, sub] of subs) sub.onJoin(() => f(null)); },   // null: someone new arrived, not yet known who
+    onLeave: f => leaveF.push(f),
+    leave: () => subs.forEach(([, sub]) => sub.leave()),
+    strats,
   };
+  for (const [st, sub] of subs) sub.onLeave(peer => {   // a player has left once no relay can reach them any more
+    for (const [pid, set] of peersOf) if (set.delete(st + ':' + peer) && !set.size) { peersOf.delete(pid); leaveF.forEach(f => f(pid)); }
+  });
+  return room;
 }
 // A stand-in for testing: tabs of one browser talk through a BroadcastChannel.
-const LOCAL_ID = Math.random().toString(36).slice(2, 10);
 function localRoom(id) {
-  const ch = new BroadcastChannel('hz-' + id), handlers = {}, joinF = [], leaveF = [], peers = new Map();
-  const post = (type, data, to) => ch.postMessage({ from: LOCAL_ID, to, type, data });
-  ch.onmessage = ({ data: msg }) => {
-    if (msg.from === LOCAL_ID || (msg.to && msg.to !== LOCAL_ID)) return;
-    const fresh = !peers.has(msg.from); peers.set(msg.from, Date.now());
-    if (msg.type === '__bye') { peers.delete(msg.from); leaveF.forEach(f => f(msg.from)); return; }
-    if (fresh) joinF.forEach(f => f(msg.from));
-    if (msg.type === '__hi') post('__hey', null, msg.from);
-    if (msg.type.startsWith('__')) return;
-    (handlers[msg.type] || []).forEach(f => f(msg.data, msg.from));
+  const ch = new BroadcastChannel('hz-' + id), handlers = {}, joinF = [], leaveF = [], peers = new Map(), TAB = Math.random().toString(36).slice(2, 10);
+  const post = (type, data) => ch.postMessage({ tab: TAB, type, data });
+  ch.onmessage = ({ data: m2 }) => {
+    if (m2.tab === TAB) return;
+    const fresh = !peers.has(m2.tab); peers.set(m2.tab, Date.now());
+    if (m2.type === '__bye') { peers.delete(m2.tab); leaveF.forEach(f => f(m2.tab)); return; }
+    if (fresh) joinF.forEach(f => f(m2.tab));
+    if (m2.type === '__hi') post('__hey');
+    if (m2.type.startsWith('__')) return;
+    (handlers[m2.type] || []).forEach(f => f(m2.data, m2.tab));
   };
   post('__hi');
   const iv = setInterval(() => { post('__hey'); for (const [p, t] of peers) if (Date.now() - t > 5000) { peers.delete(p); leaveF.forEach(f => f(p)); } }, 1500);
   addEventListener('pagehide', () => post('__bye'));
-  return {
-    self: LOCAL_ID, send: (type, d, to) => post(type, d, to), on: (type, f) => (handlers[type] = handlers[type] || []).push(f),
-    onJoin: f => joinF.push(f), onLeave: f => leaveF.push(f), leave: () => { post('__bye'); clearInterval(iv); ch.close(); },
-  };
+  return { send: (type, d) => post(type, d), on: (type, f) => (handlers[type] = handlers[type] || []).push(f),
+           onJoin: f => joinF.push(f), onLeave: f => leaveF.push(f), leave: () => { post('__bye'); clearInterval(iv); ch.close(); } };
 }
-const me = () => (MP.room || MP.lobby).self;
+const me = () => PID;                                  // safe to call any time, even before the network is up
 
 // ---------- the lobby: numbered servers ----------
 const $$ = id => document.getElementById(id);
@@ -78,14 +106,33 @@ async function enterLobby() {
   if (MP.lobby) return;
   lobbyStatus(LOCAL ? 'Test mode: tabs on this computer only.' : 'Connecting to the multiplayer network...');
   try { MP.lobby = await openRoom('lobby'); } catch (e) { lobbyStatus('Could not load the multiplayer system. Check your internet connection.', true); return; }
-  MP.lobby.on('ad', (ad, p) => { MP.ads.set(ad.id, { ...ad, host: p, seen: Date.now() }); renderAds(); });
+  MP.lobby.on('ad', (ad, p) => { MP.ads.set(ad.id, { ...ad, host: p, seen: Date.now() }); renderAds(); });   // p: the host's player id
   MP.lobby.on('adgone', (ad) => { MP.ads.delete(ad.id); renderAds(); });
-  if (!LOCAL) setTimeout(() => {                        // after a while, say whether the relays could be reached
-    const socks = trystero && trystero.getRelaySockets ? Object.values(trystero.getRelaySockets()) : [];
-    if (socks.length && socks.every(s => s.readyState !== 1)) lobbyStatus("Can't reach the multiplayer network from here. Try another network, or check that nothing blocks it.", true);
-    else lobbyStatus('Connected. Servers appear here as players create them.');
-  }, 6000);
+  if (!LOCAL) setTimeout(checkRelays, 5000);
+  if (!LOCAL) setInterval(checkRelays, 15000);
   setInterval(() => { let gone = false; for (const [k, a] of MP.ads) if (Date.now() - a.seen > 7000) { MP.ads.delete(k); gone = true; } if (gone) renderAds(); }, 2000);
+}
+// Can this browser make direct player-to-player connections (WebRTC) at all? Some browsers and settings block them,
+// for example Brave with strict privacy settings. Test it once by connecting two connections inside this page.
+let rtcOk = null;
+(async () => {
+  if (LOCAL) { rtcOk = true; return; }
+  try {
+    const a = new RTCPeerConnection(), c = new RTCPeerConnection();
+    a.onicecandidate = e => e.candidate && c.addIceCandidate(e.candidate).catch(() => {});
+    c.onicecandidate = e => e.candidate && a.addIceCandidate(e.candidate).catch(() => {});
+    a.createDataChannel('test');
+    await a.setLocalDescription(await a.createOffer()); await c.setRemoteDescription(a.localDescription);
+    await c.setLocalDescription(await c.createAnswer()); await a.setRemoteDescription(c.localDescription);
+    for (let i = 0; i < 40 && a.connectionState !== 'connected'; i++) await new Promise(r => setTimeout(r, 100));
+    rtcOk = a.connectionState === 'connected'; a.close(); c.close();
+  } catch (e) { rtcOk = false; }
+})();
+function checkRelays() {                              // say which kinds of relay this network can reach
+  const up = Object.entries(mods).filter(([, md]) => { try { return Object.values(md.getRelaySockets ? md.getRelaySockets() : {}).some(ws => ws && ws.readyState === 1); } catch (e) { return false; } }).map(([k]) => k);
+  if (rtcOk === false) lobbyStatus('This browser is blocking direct connections between players (WebRTC), so multiplayer cannot work here. In Brave: turn Shields off for this site and set Settings → Privacy → WebRTC IP handling policy to "Default". Or play in Chrome or Edge.', true);
+  else if (!up.length) lobbyStatus("Can't reach any multiplayer relay from this network. Try another network (a phone hotspot often works), or turn off blockers such as Brave Shields for this site.", true);
+  else lobbyStatus(`Connected through ${up.length} of 3 relay networks. Servers appear here as players create them.`);
 }
 function renderAds() {
   const list = [...MP.ads.values()].sort((a, b) => a.num - b.num);
@@ -100,12 +147,13 @@ function myName() { const v = $$('mpName').value.trim().slice(0, 16) || 'Astrona
 
 // ---------- a server: the host's side ----------
 async function createServer() {
-  if (!MP.lobby && !LOCAL) return;
+  if (!MP.lobby) { lobbyStatus('Still connecting to the multiplayer network... try again in a moment.', true); return; }
   const used = new Set([...MP.ads.values()].map(a => a.num));
   let num = 1; while (used.has(num)) num++;
   Object.assign(MP, { host: true, num, id: Math.random().toString(36).slice(2, 10), name: myName(), state: 'waiting', mode: 'race' });
-  MP.room = await openRoom('srv-' + MP.id); MP.hostId = MP.room.self;
-  MP.roster = [{ id: MP.room.self, name: MP.name, slot: 0 }];
+  try { MP.room = await openRoom('srv-' + MP.id); } catch (e) { lobbyStatus('Could not create a server: the multiplayer network is not reachable.', true); return; }
+  MP.hostId = PID;
+  MP.roster = [{ id: PID, name: MP.name, slot: 0 }];
   wireRoom();
   MP.room.on('hi', (d, p) => {                          // a player asks to join
     if (MP.roster.some(r => r.id === p)) return;
@@ -128,11 +176,11 @@ async function join(ad) {
   if (!ad) return;
   Object.assign(MP, { host: false, num: ad.num, id: ad.id, hostId: ad.host, name: myName(), state: 'joining', roster: [] });
   lobbyStatus(`Joining server ${ad.num}...`);
-  MP.room = await openRoom('srv-' + ad.id);
+  try { MP.room = await openRoom('srv-' + ad.id); } catch (e) { lobbyStatus('Could not join: the multiplayer network is not reachable.', true); return; }
   wireRoom();
-  const hello = () => MP.room.send('hi', { name: MP.name }, MP.hostId);
-  MP.room.onJoin(p => { if (p === MP.hostId) hello(); });
-  hello();
+  const hello = () => { if (MP.state === 'joining' && MP.room) MP.room.send('hi', { name: MP.name }, MP.hostId); };
+  MP.room.onJoin(hello);                                // say hello whenever a new connection opens, and keep asking until the host answers
+  hello(); const helloT = setInterval(() => { if (MP.state !== 'joining') clearInterval(helloT); else hello(); }, 1500);
   MP.room.on('nope', d => { leaveRoom(); lobbyStatus(d.why, true); });
   MP.room.on('roster', d => { const first = MP.state === 'joining'; Object.assign(MP, { roster: d.roster, mode: d.mode, state: d.state === 'playing' && !MP.playing ? MP.state : d.state }); if (first) { MP.state = 'waiting'; showRoom(); } else renderRoom(); });
   MP.room.on('start', d => begin(d.mode, d.seed));

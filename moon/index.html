@@ -349,7 +349,7 @@ function draw(now) {
   ctx.imageSmoothingEnabled = true;
   // lander and rover
   if (!MP.on && vis(LANDER.x, LANDER.y, 700)) { shadow(LANDER.x, LANDER.y, 150, 520); sprite(art.lander, LANDER.x, LANDER.y, 420, 0); }
-  if (MP.on) MP.world(vis, now);
+  if (MP.on && screen === 'play') MP.world(vis, now);
   if (vis(ROVER.x, ROVER.y, 200)) {
     shadow(ROVER.x, ROVER.y, 60, 200);
     sprite(art.rover, ROVER.x, ROVER.y, 170, ROVER.ang);
@@ -363,7 +363,7 @@ function draw(now) {
   ctx.restore();
 
   drawNight(ox, oy, now);
-  if (MP.on) MP.overlay(ox, oy, now);
+  if (MP.on && screen === 'play') MP.overlay(ox, oy, now);
   // Earth hanging low over the horizon, glowing at the edge of the view
   { const ex = W - 74, ey = 150, er = 40, g = ctx.createRadialGradient(ex, ey, er * 0.8, ex, ey, er * 2.2);
     g.addColorStop(0, 'rgba(120,180,255,.35)'); g.addColorStop(1, 'rgba(120,180,255,0)'); ctx.fillStyle = g; ctx.beginPath(); ctx.arc(ex, ey, er * 2.2, 0, 7); ctx.fill();
@@ -400,9 +400,11 @@ function drawNight(ox, oy, now) {
 let last = performance.now();
 function loop(now) {
   const dt = Math.max(0, Math.min(0.05, (now - last) / 1000)); last = now;
-  if (screen === 'play') { if (!MP.on || MP.tick(dt)) update(dt); else if (MP.on) MP.hud(); }
+  try {                                                   // one error must never stop the game for good
+    if (screen === 'play') { if (!MP.on || MP.tick(dt)) update(dt); else if (MP.on) MP.hud(); }
   else if (screen === 'menu') { cam.x = LANDER.x + 200 + Math.sin(now / 5000) * 200; cam.y = LANDER.y - 120; }
-  draw(now);
+    draw(now);
+  } catch (e) { console.error(e); }
   requestAnimationFrame(loop);
 }
 requestAnimationFrame(loop);
